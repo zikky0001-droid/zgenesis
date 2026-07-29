@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Genesis - Anime Downloader</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* ============================================
+           THE GENESIS - EMBEDDED STYLES
+           By Dev Zikky Tech
+           ============================================ */
+
+        /* ============== CSS VARIABLES ============== */
+        :root {
+            --primary: #8b17b6;
+            --primary-glow: rgba(139, 23, 182, 0.4);
+            --secondary: #00ffea;
+            --secondary-glow: rgba(0, 255, 234, 0.3);
+            --accent: #ff2a6d;
+            --accent-glow: rgba(255, 42, 109, 0.3);
+            --text: #f0f0f0;
+            --text-muted: #a0a0a0;
+            --bg: #0a0a12;
+            --card-bg: rgba(18, 18, 28, 0.95);
+            --card-border: rgba(139, 23, 182, 0.3);
+            --hover: rgba(139, 23, 182, 0.2);
+            --border: rgba(139, 23, 182, 0.5);
+            --success: #00ff88;
+            --error: #ff2a6d;
+            --neon: 0 0 15px var(--primary-glow);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Light Theme */
+        body.light-theme {
+            --text: #1a1a2e;
+            --text-muted: #4a4a6a;
+            --bg: #f0f0f5;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --card-border: rgba(139, 23, 182, 0.2);
+            --hover: rgba(139, 23, 182, 0.05);
+            --border: rgba(139, 23, 182, 0.3);
+        }
+
+        /* ============== RESET ============== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0a0a12, #1a0a2a, #0a122a);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+            transition: var(--transition);
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 80%, var(--primary-glow), transparent 40%),
+                radial-gradient(circle at 80% 20%, var(--secondary-glow), transparent 40%);
+            z-index: -2;
+            opacity: 0.3;
+            animation: bgPulse 8s ease infinite;
+        }
+
+        @keyframes bgPulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.5; }
+        }
+
+        /* ============== NAVBAR ============== */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-bottom: 2px solid var(--primary);
+            padding: 0.8rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 1000;
+            box-shadow: var(--neon);
+            animation: borderGlow 4s infinite;
+        }
+
+        @keyframes borderGlow {
+            0%, 100% { border-bottom-color: var(--primary); }
+            33% { border-bottom-color: var(--secondary); }
+            66% { border-bottom-color: var(--accent); }
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .brand-logo {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            animation: floatLogo 3s ease infinite;
+        }
+
+        @keyframes floatLogo {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .brand-name {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .brand-highlight {
+            background: linear-gradient(135deg, var(--secondary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            padding: 8px 15px;
+            border-radius: 20px;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav-links a::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, var(--primary-glow), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .nav-links a:hover::before {
+            left: 100%;
+        }
+
+        .nav-links a:hover, 
+        .nav-links a.active {
+            color: var(--text);
+            background: var(--hover);
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .theme-toggle {
+            background: var(--card-bg);
+            border: 2px solid var(--primary);
+            color: var(--text);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+            flex-shrink: 0;
+        }
+
+        .theme-toggle:hover {
+            transform: rotate(180deg);
+            box-shadow: var(--neon);
+        }
+
+        .menu-toggle {
+            display: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text);
+            transition: var(--transition);
+            background: none;
+            border: none;
+        }
+
+        .menu-toggle:hover {
+            color: var(--primary);
+            transform: scale(1.1);
+        }
+
+        /* ============== MAIN CONTAINER ============== */
+        .main-container {
+            margin-top: 80px;
+            padding: 20px;
+            min-height: calc(100vh - 80px);
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* ============== HERO SECTION ============== */
+        .hero-section {
+            text-align: center;
+            padding: 60px 20px 40px;
+            background: var(--card-bg);
+            border-radius: 30px;
+            margin-bottom: 30px;
+            border: 2px solid var(--primary);
+            box-shadow: var(--neon);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent 30%, var(--primary-glow) 50%, transparent 70%);
+            animation: shineEffect 8s infinite;
+            pointer-events: none;
+        }
+
+        @keyframes shineEffect {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            padding: 6px 18px;
+            background: var(--primary-glow);
+            border: 1px solid var(--primary);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: var(--secondary);
+            margin-bottom: 15px;
+        }
+
+        .hero-title {
+            font-size: 3.5rem;
+            margin-bottom: 15px;
+            font-weight: 800;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, var(--primary), var(--secondary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            background-size: 200% 200%;
+            animation: gradientShift 5s ease infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .hero-subtitle {
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .hero-subtitle .badge {
+            font-size: 0.75rem;
+            padding: 4px 14px;
+            background: var(--hover);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            color: var(--secondary);
+        }
+
+        /* ============== SEARCH ============== */
+        .search-container {
+            max-width: 600px;
+            margin: 0 auto 25px;
+        }
+
+        .search-wrapper {
+            display: flex;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid var(--border);
+            border-radius: 50px;
+            padding: 5px;
+            transition: var(--transition);
+        }
+
+        .search-wrapper:focus-within {
+            border-color: var(--primary);
+            box-shadow: 0 0 30px var(--primary-glow);
+        }
+
+        .search-wrapper .search-icon {
+            padding: 0 15px;
+            color: var(--text-muted);
+        }
+
+        .search-wrapper input {
+            flex: 1;
+            padding: 15px 5px;
+            border: none;
+            background: transparent;
+            color: var(--text);
+            font-size: 1rem;
+            outline: none;
+        }
+
+        .search-wrapper input::placeholder {
+            color: var(--text-muted);
+            opacity: 0.7;
+        }
+
+        .search-wrapper button {
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .search-wrapper button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        /* ============== GENRE FILTERS ============== */
+        .genre-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .filter-btn {
+            padding: 8px 20px;
+            border: 2px solid var(--border);
+            border-radius: 25px;
+            background: transparent;
+            color: var(--text-muted);
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            font-size: 0.9rem;
+        }
+
+        .filter-btn:hover, 
+        .filter-btn.active {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        /* ============== VIDEO GRID ============== */
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+            padding: 20px 0;
+        }
+
+        .video-card {
+            background: var(--card-bg);
+            border: 2px solid var(--card-border);
+            border-radius: 16px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: var(--transition);
+            animation: cardFadeIn 0.5s ease;
+        }
+
+        @keyframes cardFadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .video-card:hover {
+            transform: translateY(-8px) scale(1.01);
+            border-color: var(--primary);
+            box-shadow: 0 15px 40px var(--primary-glow);
+        }
+
+        .video-card .thumbnail-wrapper {
+            position: relative;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            background: #0a0a0a;
+        }
+
+        .video-card .thumbnail-wrapper img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: var(--transition);
+        }
+
+        .video-card:hover .thumbnail-wrapper img {
+            transform: scale(1.05);
+        }
+
+        .video-card .duration-badge {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #fff;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .video-card .quality-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #ffd93d;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .video-card .video-info {
+            padding: 15px;
+        }
+
+        .video-card .video-title {
+            font-size: 1rem;
+            font-weight: 600;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            line-height: 1.4;
+            min-height: 44px;
+            margin-bottom: 8px;
+        }
+
+        .video-card .video-meta {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px 12px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .video-card .uploader-name {
+            color: #6fc3ff;
+            font-size: 0.8rem;
+        }
+
+        .video-card .uploader-name i {
+            margin-right: 4px;
+        }
+
+        .video-card .views-count {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* ============== LOADING ============== */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            display: none;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .loading .loading-spinner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .loading .loading-spinner i {
+            font-size: 2.5rem;
+            color: var(--primary);
+        }
+
+        .loading .loading-spinner span {
+            color: var(--text-muted);
+        }
+
+        /* ============== END RESULTS ============== */
+        .end-results {
+            text-align: center;
+            padding: 40px 20px;
+            margin: 20px 0;
+            background: var(--card-bg);
+            border: 2px solid var(--border);
+            border-radius: 20px;
+        }
+
+        .end-results-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .end-results-content i {
+            font-size: 3rem;
+            color: var(--success);
+        }
+
+        .end-results-content small {
+            color: var(--text-muted);
+            opacity: 0.7;
+        }
+
+        /* ============== RESULTS HEADER ============== */
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0 20px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .results-header h2 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .results-header h2 i {
+            color: var(--primary);
+        }
+
+        .results-count {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* ============== BACK TO TOP ============== */
+        .back-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: var(--transition);
+            z-index: 999;
+            box-shadow: var(--neon);
+            display: none;
+        }
+
+        .back-to-top.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .back-to-top:hover {
+            transform: translateY(-5px) scale(1.1);
+        }
+
+        /* ============== TOAST ============== */
+        .toast-container {
+            position: fixed;
+            top: 100px;
+            right: 20px;
+            z-index: 5000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 350px;
+        }
+
+        .toast {
+            background: var(--card-bg);
+            border: 2px solid var(--primary);
+            border-radius: 12px;
+            padding: 15px 20px;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: toastSlide 0.3s ease;
+            box-shadow: var(--neon);
+            backdrop-filter: blur(10px);
+        }
+
+        .toast.success { border-color: var(--success); }
+        .toast.error { border-color: var(--error); }
+        .toast.info { border-color: var(--primary); }
+
+        .toast i {
+            font-size: 1.2rem;
+        }
+
+        .toast.success i { color: var(--success); }
+        .toast.error i { color: var(--error); }
+        .toast.info i { color: var(--primary); }
+
+        @keyframes toastSlide {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* ============== RESPONSIVE ============== */
+        @media (max-width: 1024px) {
+            .video-grid {
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .navbar { 
+                padding: 0.8rem 1rem; 
+            }
+            
+            .menu-toggle { 
+                display: block; 
+            }
+            
+            .nav-links {
+                position: fixed;
+                top: 70px;
+                left: -100%;
+                width: 100%;
+                background: var(--card-bg);
+                flex-direction: column;
+                padding: 20px;
+                transition: left 0.3s ease;
+                border-bottom: 2px solid var(--primary);
+                gap: 5px;
+                backdrop-filter: blur(10px);
+            }
+            
+            .nav-links.active { 
+                left: 0; 
+            }
+
+            .nav-links a {
+                width: 100%;
+                padding: 12px 20px;
+            }
+
+            .hero-title { 
+                font-size: 2.2rem; 
+            }
+
+            .hero-subtitle {
+                font-size: 1rem;
+            }
+
+            .video-grid { 
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 15px;
+            }
+
+            .back-to-top {
+                width: 45px;
+                height: 45px;
+                font-size: 1rem;
+                bottom: 20px;
+                right: 20px;
+            }
+
+            .toast-container {
+                top: 80px;
+                right: 10px;
+                left: 10px;
+                max-width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .brand-name {
+                font-size: 1.2rem;
+            }
+
+            .brand-logo {
+                width: 35px;
+                height: 35px;
+                font-size: 16px;
+            }
+
+            .hero-title { 
+                font-size: 1.6rem; 
+            }
+
+            .hero-section {
+                padding: 30px 15px;
+            }
+
+            .video-grid { 
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 12px;
+            }
+
+            .video-card .video-title {
+                font-size: 0.85rem;
+                min-height: 36px;
+            }
+
+            .video-card .video-meta {
+                font-size: 0.7rem;
+                gap: 4px 8px;
+            }
+
+            .results-header h2 {
+                font-size: 1.2rem;
+            }
+
+            .results-count {
+                font-size: 0.75rem;
+            }
+
+            .filter-btn {
+                padding: 6px 14px;
+                font-size: 0.8rem;
+            }
+
+            .genre-filters {
+                gap: 6px;
+            }
+
+            .search-wrapper input {
+                font-size: 0.9rem;
+                padding: 12px 5px;
+            }
+
+            .search-wrapper button {
+                width: 42px;
+                height: 42px;
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- ===== NAVBAR ===== -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <div class="brand-logo">
+                <i class="fas fa-fire"></i>
+            </div>
+            <span class="brand-name">THE <span class="brand-highlight">GENESIS</span></span>
+        </div>
+
+        <div class="nav-links" id="navLinks">
+            <a href="index.html" class="active"><i class="fas fa-home"></i> Home</a>
+            <a href="#trending" id="trendingLink"><i class="fas fa-fire"></i> Trending</a>
+            <a href="#bookmarks" id="bookmarksLink"><i class="fas fa-bookmark"></i> Bookmarks</a>
+            <a href="#downloads" id="downloadsLink"><i class="fas fa-download"></i> Downloads</a>
+        </div>
+
+        <button class="theme-toggle" id="themeToggle">
+            <i class="fas fa-moon"></i>
+        </button>
+        
+        <div class="menu-toggle" id="menuToggle">
+            <i class="fas fa-bars"></i>
+        </div>
+    </nav>
+
+    <!-- ===== MAIN CONTAINER ===== -->
+    <main class="main-container" id="mainContainer">
+        <!-- ===== HERO SECTION ===== -->
+        <section class="hero-section">
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <i class="fas fa-bolt"></i> Unlimited Anime
+                </div>
+                <h1 class="hero-title">
+                    <span class="gradient-text">THE GENESIS</span>
+                </h1>
+                <p class="hero-subtitle">
+                    <i class="fas fa-play-circle"></i> 
+                    Stream & Download Anime Videos Free
+                    <span class="badge">By Dev Zikky Tech</span>
+                </p>
+                
+                <!-- ===== SEARCH ===== -->
+                <div class="search-container">
+                    <div class="search-wrapper">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" id="searchInput" placeholder="Search anime videos... (Ctrl+K)">
+                        <button id="searchBtn"><i class="fas fa-arrow-right"></i></button>
+                    </div>
+                </div>
+
+                <!-- ===== GENRE FILTERS ===== -->
+                <div class="genre-filters" id="genreFilters">
+                    <button class="filter-btn active" data-genre="all">🔥 All</button>
+                    <button class="filter-btn" data-genre="popular">⭐ Popular</button>
+                    <button class="filter-btn" data-genre="recent">🆕 Recent</button>
+                    <button class="filter-btn" data-genre="hd">🎥 HD</button>
+                    <button class="filter-btn" data-genre="action">⚡ Action</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== RESULTS ===== -->
+        <div class="content-area">
+            <div class="results-header">
+                <h2><i class="fas fa-film"></i> Trending Videos</h2>
+                <span class="results-count" id="resultsCount">Loading...</span>
+            </div>
+            
+            <div id="results" class="video-grid"></div>
+            
+            <!-- ===== LOADING ===== -->
+            <div class="loading" id="loading">
+                <div class="loading-spinner">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>Loading amazing content...</span>
+                </div>
+            </div>
+
+            <!-- ===== END RESULTS ===== -->
+            <div class="end-results" id="endResults" style="display: none;">
+                <div class="end-results-content">
+                    <i class="fas fa-check-circle"></i>
+                    <span>You've reached the end</span>
+                    <small>🎬 Keep exploring!</small>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== BACK TO TOP ===== -->
+    <button class="back-to-top" id="backToTop">
+        <i class="fas fa-arrow-up"></i>
+    </button>
+
+    <!-- ===== TOAST CONTAINER ===== -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // ============================================
+        // THE GENESIS - FRONTEND LOGIC (EMBEDDED)
+        // ============================================
+
+        // ============== STATE ==============
+        const state = {
+            videos: [],
+            currentPage: 1,
+            isLoading: false,
+            hasMore: true,
+            searchQuery: '',
+            currentGenre: 'all'
+        };
+
+        // ============== DOM REFS ==============
+        const DOM = {
+            results: document.getElementById('results'),
+            loading: document.getElementById('loading'),
+            endResults: document.getElementById('endResults'),
+            searchInput: document.getElementById('searchInput'),
+            searchBtn: document.getElementById('searchBtn'),
+            resultsCount: document.getElementById('resultsCount'),
+            backToTop: document.getElementById('backToTop'),
+            themeToggle: document.getElementById('themeToggle'),
+            menuToggle: document.getElementById('menuToggle'),
+            navLinks: document.getElementById('navLinks'),
+            toastContainer: document.getElementById('toastContainer'),
+            genreFilters: document.getElementById('genreFilters')
+        };
+
+        // ============== INIT ==============
+        document.addEventListener('DOMContentLoaded', () => {
+            loadVideos();
+            setupEventListeners();
+            setupScroll();
+            loadTheme();
+        });
+
+        // ============== LOAD VIDEOS ==============
+        async function loadVideos() {
+            if (state.isLoading || !state.hasMore) return;
+            
+            state.isLoading = true;
+            if (DOM.loading) DOM.loading.classList.add('show');
+            
+            try {
+                // Mock data for testing
+                const mockData = {
+                    videos: [
+                        {
+                            id: '1',
+                            title: 'Goku vs Android 21 (DB) AI',
+                            uploader: 'Dairy Land',
+                            duration: '11min',
+                            quality: '1080p',
+                            views: '108.4k',
+                            thumbnail: 'https://via.placeholder.com/320x180/1a1a2e/fff?text=Anime+1'
+                        },
+                        {
+                            id: '2',
+                            title: 'Soaking My Stepsister Tight Shirt',
+                            uploader: 'Panty Land',
+                            duration: '20min',
+                            quality: '1080p',
+                            views: '200.7k',
+                            thumbnail: 'https://via.placeholder.com/320x180/1a1a2e/fff?text=Anime+2'
+                        },
+                        {
+                            id: '3',
+                            title: 'Busty Babe Rides His Cock',
+                            uploader: 'Wrecked',
+                            duration: '11min',
+                            quality: '1080p',
+                            views: '83.2k',
+                            thumbnail: 'https://via.placeholder.com/320x180/1a1a2e/fff?text=Anime+3'
+                        },
+                        {
+                            id: '4',
+                            title: 'Secret Dorm Hookup Turns Into Threesome',
+                            uploader: 'MrPussyLicking',
+                            duration: '16min',
+                            quality: '1440p',
+                            views: '18.6k',
+                            thumbnail: 'https://via.placeholder.com/320x180/1a1a2e/fff?text=Anime+4'
+                        },
+                        {
+                            id: '5',
+                            title: 'My Stepdad and I Having Sex',
+                            uploader: 'Crispng',
+                            duration: '14min',
+                            quality: '1080p',
+                            views: '8.5k',
+                            thumbnail: 'https://via.placeholder.com/320x180/1a1a2e/fff?text=Anime+5'
+                        },
+                        {
+                            id: '6',
+                            title: 'Masturbando a un extraño en el autobús',
+                            uploader: 'Valentino_Roman',
+                            duration: '10min',
+                            quality: '1440p',
+                            views: '59.6k',
+                            thumbnail: 'https://via.placeholder.com/320x180/1a1a2e/fff?text=Anime+6'
+                        }
+                    ],
+                    total: 6,
+                    hasMore: false
+                };
+                
+                const data = mockData;
+                
+                if (!data.videos || data.videos.length === 0) {
+                    state.hasMore = false;
+                    if (DOM.endResults) DOM.endResults.style.display = 'block';
+                    return;
+                }
+                
+                renderVideos(data.videos);
+                updateResultsCount(data.total);
+                
+                state.currentPage++;
+                state.hasMore = data.hasMore;
+                
+                if (!state.hasMore && DOM.endResults) {
+                    DOM.endResults.style.display = 'block';
+                }
+                
+            } catch (error) {
+                console.error('Error loading videos:', error);
+                showToast('Failed to load videos', 'error');
+            } finally {
+                state.isLoading = false;
+                if (DOM.loading) DOM.loading.classList.remove('show');
+            }
+        }
+
+        // ============== RENDER VIDEOS ==============
+        function renderVideos(videos) {
+            if (!DOM.results) return;
+            
+            videos.forEach(video => {
+                const card = document.createElement('div');
+                card.className = 'video-card';
+                card.dataset.videoId = video.id;
+                
+                card.innerHTML = `
+                    <div class="thumbnail-wrapper">
+                        <img src="${video.thumbnail || 'https://via.placeholder.com/320x180?text=No+Thumbnail'}" 
+                             alt="${video.title}" 
+                             loading="lazy"
+                             onerror="this.src='https://via.placeholder.com/320x180?text=No+Thumbnail'">
+                        <span class="duration-badge">${video.duration || 'N/A'}</span>
+                        ${video.quality && video.quality !== 'N/A' ? `<span class="quality-badge">${video.quality}</span>` : ''}
+                    </div>
+                    <div class="video-info">
+                        <div class="video-title">${video.title || 'Untitled'}</div>
+                        <div class="video-meta">
+                            ${video.uploader ? `<span class="uploader-name"><i class="fas fa-user"></i> ${video.uploader}</span>` : ''}
+                            <span class="views-count"><i class="fas fa-eye"></i> ${video.views || 0}</span>
+                        </div>
+                    </div>
+                `;
+                
+                card.addEventListener('click', () => {
+                    window.location.href = `video.html?id=${encodeURIComponent(video.id)}`;
+                });
+                
+                DOM.results.appendChild(card);
+            });
+        }
+
+        // ============== UPDATE RESULTS COUNT ==============
+        function updateResultsCount(count) {
+            if (DOM.resultsCount) {
+                DOM.resultsCount.textContent = `${count || 0} videos found`;
+            }
+        }
+
+        // ============== SEARCH ==============
+        function performSearch() {
+            if (!DOM.searchInput) return;
+            
+            const query = DOM.searchInput.value.trim();
+            if (!query) {
+                showToast('Please enter a search term', 'info');
+                return;
+            }
+            
+            state.searchQuery = query;
+            state.currentPage = 1;
+            state.hasMore = true;
+            state.videos = [];
+            if (DOM.results) DOM.results.innerHTML = '';
+            if (DOM.endResults) DOM.endResults.style.display = 'none';
+            
+            showToast(`Searching for "${query}"...`, 'info');
+            loadVideos();
+        }
+
+        // ============== EVENT LISTENERS ==============
+        function setupEventListeners() {
+            // Search
+            if (DOM.searchBtn) {
+                DOM.searchBtn.addEventListener('click', performSearch);
+            }
+            if (DOM.searchInput) {
+                DOM.searchInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') performSearch();
+                });
+            }
+            
+            // Theme Toggle
+            if (DOM.themeToggle) {
+                DOM.themeToggle.addEventListener('click', toggleTheme);
+            }
+            
+            // Menu Toggle
+            if (DOM.menuToggle && DOM.navLinks) {
+                DOM.menuToggle.addEventListener('click', () => {
+                    DOM.navLinks.classList.toggle('active');
+                });
+                
+                DOM.navLinks.querySelectorAll('a').forEach(link => {
+                    link.addEventListener('click', () => {
+                        DOM.navLinks.classList.remove('active');
+                    });
+                });
+            }
+            
+            // Genre Filters
+            if (DOM.genreFilters) {
+                const filterBtns = DOM.genreFilters.querySelectorAll('.filter-btn');
+                filterBtns.forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        filterBtns.forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        state.currentGenre = btn.dataset.genre;
+                        state.currentPage = 1;
+                        state.hasMore = true;
+                        state.videos = [];
+                        if (DOM.results) DOM.results.innerHTML = '';
+                        if (DOM.endResults) DOM.endResults.style.display = 'none';
+                        loadVideos();
+                    });
+                });
+            }
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                    e.preventDefault();
+                    if (DOM.searchInput) DOM.searchInput.focus();
+                }
+                if (e.key === 'Escape' && document.activeElement === DOM.searchInput) {
+                    if (DOM.searchInput) {
+                        DOM.searchInput.value = '';
+                        DOM.searchInput.blur();
+                    }
+                }
+            });
+        }
+
+        // ============== SCROLL ==============
+        function setupScroll() {
+            window.addEventListener('scroll', () => {
+                if (DOM.backToTop) {
+                    if (window.scrollY > 400) {
+                        DOM.backToTop.classList.add('show');
+                    } else {
+                        DOM.backToTop.classList.remove('show');
+                    }
+                }
+            });
+            
+            if (DOM.backToTop) {
+                DOM.backToTop.addEventListener('click', () => {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                });
+            }
+        }
+
+        // ============== THEME ==============
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+            if (DOM.themeToggle) {
+                const icon = DOM.themeToggle.querySelector('i');
+                if (document.body.classList.contains('light-theme')) {
+                    icon.className = 'fas fa-sun';
+                    localStorage.setItem('theme', 'light');
+                } else {
+                    icon.className = 'fas fa-moon';
+                    localStorage.setItem('theme', 'dark');
+                }
+            }
+        }
+
+        function loadTheme() {
+            if (localStorage.getItem('theme') === 'light') {
+                document.body.classList.add('light-theme');
+                if (DOM.themeToggle) {
+                    DOM.themeToggle.querySelector('i').className = 'fas fa-sun';
+                }
+            }
+        }
+
+        // ============== TOAST ==============
+        function showToast(message, type = 'info') {
+            if (!DOM.toastContainer) return;
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            let icon = 'info-circle';
+            if (type === 'success') icon = 'check-circle';
+            if (type === 'error') icon = 'exclamation-circle';
+            
+            toast.innerHTML = `
+                <i class="fas fa-${icon}"></i>
+                <span>${message}</span>
+            `;
+            
+            DOM.toastContainer.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'fadeOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        console.log('🔥 The Genesis loaded successfully!');
+        console.log('📚 Dev Zikky Tech');
+        console.log('💡 Press Ctrl+K to search');
+    </script>
+</body>
+</html>
+
+
+
