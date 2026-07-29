@@ -209,7 +209,13 @@ async function loadVideos() {
         };
         
         // Comment this out when backend is ready
-        const data = mockData;
+       // ❌ DON'T DO THIS
+      // const data = mockData;
+
+      // ✅ DO THIS INSTEAD
+const response = await fetch(`${API_BASE}/api/home?${params}`);
+if (!response.ok) throw new Error('Failed to load videos');
+const data = await response.json();
         
         // Real API call (uncomment when backend is ready)
         // const response = await fetch(`${API_BASE}/api/home?${params}`);
