@@ -905,285 +905,293 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
-        // ============================================
-        // THE GENESIS - FRONTEND LOGIC (EMBEDDED)
-        // ============================================
+    // ============================================
+    // THE GENESIS - FRONTEND LOGIC
+    // ============================================
 
-        // ============== STATE ==============
-        const state = {
-            videos: [],
-            currentPage: 1,
-            isLoading: false,
-            hasMore: true,
-            searchQuery: '',
-            currentGenre: 'all'
-        };
+    // ============== API BASE ==============
+    const API_BASE = window.location.origin;
 
-        // ============== DOM REFS ==============
-        const DOM = {
-            results: document.getElementById('results'),
-            loading: document.getElementById('loading'),
-            endResults: document.getElementById('endResults'),
-            searchInput: document.getElementById('searchInput'),
-            searchBtn: document.getElementById('searchBtn'),
-            resultsCount: document.getElementById('resultsCount'),
-            backToTop: document.getElementById('backToTop'),
-            themeToggle: document.getElementById('themeToggle'),
-            menuToggle: document.getElementById('menuToggle'),
-            navLinks: document.getElementById('navLinks'),
-            toastContainer: document.getElementById('toastContainer'),
-            genreFilters: document.getElementById('genreFilters')
-        };
+    // ============== STATE ==============
+    const state = {
+        videos: [],
+        currentPage: 1,
+        isLoading: false,
+        hasMore: true,
+        searchQuery: '',
+        currentGenre: 'all'
+    };
 
-        // ============== INIT ==============
-        document.addEventListener('DOMContentLoaded', () => {
-            loadVideos();
-            setupEventListeners();
-            setupScroll();
-            loadTheme();
-        });
+    // ============== DOM REFS ==============
+    const DOM = {
+        results: document.getElementById('results'),
+        loading: document.getElementById('loading'),
+        endResults: document.getElementById('endResults'),
+        searchInput: document.getElementById('searchInput'),
+        searchBtn: document.getElementById('searchBtn'),
+        resultsCount: document.getElementById('resultsCount'),
+        backToTop: document.getElementById('backToTop'),
+        themeToggle: document.getElementById('themeToggle'),
+        menuToggle: document.getElementById('menuToggle'),
+        navLinks: document.getElementById('navLinks'),
+        toastContainer: document.getElementById('toastContainer'),
+        genreFilters: document.getElementById('genreFilters')
+    };
 
-        // ============== LOAD VIDEOS ==============
-async function loadVideos() {
-    if (state.isLoading || !state.hasMore) return;
-    
-    state.isLoading = true;
-    if (DOM.loading) DOM.loading.classList.add('show');
-    
-    try {
-        const params = new URLSearchParams({
-            page: state.currentPage,
-            search: state.searchQuery,
-            genre: state.currentGenre
-        });
-        
-        // 🚀 REAL API CALL - ENABLED
-        const response = await fetch(`${API_BASE}/api/home?${params}`);
-        if (!response.ok) throw new Error('Failed to load videos');
-        const data = await response.json();
-        
-        if (!data.videos || data.videos.length === 0) {
-            state.hasMore = false;
-            if (DOM.endResults) DOM.endResults.style.display = 'block';
-            return;
-        }
-        
-        renderVideos(data.videos);
-        updateResultsCount(data.total);
-        
-        state.currentPage++;
-        state.hasMore = data.hasMore;
-        
-        if (!state.hasMore && DOM.endResults) {
-            DOM.endResults.style.display = 'block';
-        }
-        
-    } catch (error) {
-        console.error('Error loading videos:', error);
-        showToast('Failed to load videos', 'error');
-    } finally {
-        state.isLoading = false;
-        if (DOM.loading) DOM.loading.classList.remove('show');
-    }
-}
+    // ============== INIT ==============
+    document.addEventListener('DOMContentLoaded', () => {
+        loadVideos();
+        setupEventListeners();
+        setupScroll();
+        loadTheme();
+    });
 
-        // ============== RENDER VIDEOS ==============
-        function renderVideos(videos) {
-            if (!DOM.results) return;
-            
-            videos.forEach(video => {
-                const card = document.createElement('div');
-                card.className = 'video-card';
-                card.dataset.videoId = video.id;
-                
-                card.innerHTML = `
-                    <div class="thumbnail-wrapper">
-                        <img src="${video.thumbnail || 'https://via.placeholder.com/320x180?text=No+Thumbnail'}" 
-                             alt="${video.title}" 
-                             loading="lazy"
-                             onerror="this.src='https://via.placeholder.com/320x180?text=No+Thumbnail'">
-                        <span class="duration-badge">${video.duration || 'N/A'}</span>
-                        ${video.quality && video.quality !== 'N/A' ? `<span class="quality-badge">${video.quality}</span>` : ''}
-                    </div>
-                    <div class="video-info">
-                        <div class="video-title">${video.title || 'Untitled'}</div>
-                        <div class="video-meta">
-                            ${video.uploader ? `<span class="uploader-name"><i class="fas fa-user"></i> ${video.uploader}</span>` : ''}
-                            <span class="views-count"><i class="fas fa-eye"></i> ${video.views || 0}</span>
-                        </div>
-                    </div>
-                `;
-                
-                card.addEventListener('click', () => {
-                    window.location.href = `video.html?id=${encodeURIComponent(video.id)}`;
-                });
-                
-                DOM.results.appendChild(card);
+    // ============== LOAD VIDEOS ==============
+    async function loadVideos() {
+        if (state.isLoading || !state.hasMore) return;
+
+        state.isLoading = true;
+        if (DOM.loading) DOM.loading.classList.add('show');
+
+        try {
+            const params = new URLSearchParams({
+                page: state.currentPage,
+                search: state.searchQuery,
+                genre: state.currentGenre
             });
-        }
 
-        // ============== UPDATE RESULTS COUNT ==============
-        function updateResultsCount(count) {
-            if (DOM.resultsCount) {
-                DOM.resultsCount.textContent = `${count || 0} videos found`;
-            }
-        }
+            console.log('📡 Fetching:', `${API_BASE}/api/home?${params}`);
 
-        // ============== SEARCH ==============
-        function performSearch() {
-            if (!DOM.searchInput) return;
-            
-            const query = DOM.searchInput.value.trim();
-            if (!query) {
-                showToast('Please enter a search term', 'info');
+            const response = await fetch(`${API_BASE}/api/home?${params}`);
+            if (!response.ok) throw new Error('Failed to load videos');
+            const data = await response.json();
+
+            console.log('✅ API Response:', data);
+
+            if (!data.videos || data.videos.length === 0) {
+                state.hasMore = false;
+                if (DOM.endResults) DOM.endResults.style.display = 'block';
                 return;
             }
-            
-            state.searchQuery = query;
-            state.currentPage = 1;
-            state.hasMore = true;
-            state.videos = [];
-            if (DOM.results) DOM.results.innerHTML = '';
-            if (DOM.endResults) DOM.endResults.style.display = 'none';
-            
-            showToast(`Searching for "${query}"...`, 'info');
-            loadVideos();
-        }
 
-        // ============== EVENT LISTENERS ==============
-        function setupEventListeners() {
-            // Search
-            if (DOM.searchBtn) {
-                DOM.searchBtn.addEventListener('click', performSearch);
-            }
-            if (DOM.searchInput) {
-                DOM.searchInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') performSearch();
-                });
-            }
-            
-            // Theme Toggle
-            if (DOM.themeToggle) {
-                DOM.themeToggle.addEventListener('click', toggleTheme);
-            }
-            
-            // Menu Toggle
-            if (DOM.menuToggle && DOM.navLinks) {
-                DOM.menuToggle.addEventListener('click', () => {
-                    DOM.navLinks.classList.toggle('active');
-                });
-                
-                DOM.navLinks.querySelectorAll('a').forEach(link => {
-                    link.addEventListener('click', () => {
-                        DOM.navLinks.classList.remove('active');
-                    });
-                });
-            }
-            
-            // Genre Filters
-            if (DOM.genreFilters) {
-                const filterBtns = DOM.genreFilters.querySelectorAll('.filter-btn');
-                filterBtns.forEach(btn => {
-                    btn.addEventListener('click', () => {
-                        filterBtns.forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        state.currentGenre = btn.dataset.genre;
-                        state.currentPage = 1;
-                        state.hasMore = true;
-                        state.videos = [];
-                        if (DOM.results) DOM.results.innerHTML = '';
-                        if (DOM.endResults) DOM.endResults.style.display = 'none';
-                        loadVideos();
-                    });
-                });
-            }
-            
-            // Keyboard shortcuts
-            document.addEventListener('keydown', (e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-                    e.preventDefault();
-                    if (DOM.searchInput) DOM.searchInput.focus();
-                }
-                if (e.key === 'Escape' && document.activeElement === DOM.searchInput) {
-                    if (DOM.searchInput) {
-                        DOM.searchInput.value = '';
-                        DOM.searchInput.blur();
-                    }
-                }
-            });
-        }
+            renderVideos(data.videos);
+            updateResultsCount(data.total);
 
-        // ============== SCROLL ==============
-        function setupScroll() {
-            window.addEventListener('scroll', () => {
-                if (DOM.backToTop) {
-                    if (window.scrollY > 400) {
-                        DOM.backToTop.classList.add('show');
-                    } else {
-                        DOM.backToTop.classList.remove('show');
-                    }
-                }
-            });
-            
-            if (DOM.backToTop) {
-                DOM.backToTop.addEventListener('click', () => {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                });
-            }
-        }
+            state.currentPage++;
+            state.hasMore = data.hasMore;
 
-        // ============== THEME ==============
-        function toggleTheme() {
-            document.body.classList.toggle('light-theme');
-            if (DOM.themeToggle) {
-                const icon = DOM.themeToggle.querySelector('i');
-                if (document.body.classList.contains('light-theme')) {
-                    icon.className = 'fas fa-sun';
-                    localStorage.setItem('theme', 'light');
-                } else {
-                    icon.className = 'fas fa-moon';
-                    localStorage.setItem('theme', 'dark');
-                }
+            if (!state.hasMore && DOM.endResults) {
+                DOM.endResults.style.display = 'block';
             }
-        }
 
-        function loadTheme() {
-            if (localStorage.getItem('theme') === 'light') {
-                document.body.classList.add('light-theme');
-                if (DOM.themeToggle) {
-                    DOM.themeToggle.querySelector('i').className = 'fas fa-sun';
-                }
-            }
+        } catch (error) {
+            console.error('❌ Error loading videos:', error);
+            showToast('Failed to load videos', 'error');
+        } finally {
+            state.isLoading = false;
+            if (DOM.loading) DOM.loading.classList.remove('show');
         }
+    }
 
-        // ============== TOAST ==============
-        function showToast(message, type = 'info') {
-            if (!DOM.toastContainer) return;
-            
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            
-            let icon = 'info-circle';
-            if (type === 'success') icon = 'check-circle';
-            if (type === 'error') icon = 'exclamation-circle';
-            
-            toast.innerHTML = `
-                <i class="fas fa-${icon}"></i>
-                <span>${message}</span>
+    // ============== RENDER VIDEOS ==============
+    function renderVideos(videos) {
+        if (!DOM.results) return;
+
+        DOM.results.innerHTML = '';
+
+        videos.forEach(video => {
+            const card = document.createElement('div');
+            card.className = 'video-card';
+            card.dataset.videoId = video.id;
+
+            card.innerHTML = `
+                <div class="thumbnail-wrapper">
+                    <img src="${video.thumbnail || 'https://via.placeholder.com/320x180?text=No+Thumbnail'}" 
+                         alt="${video.title}" 
+                         loading="lazy"
+                         onerror="this.src='https://via.placeholder.com/320x180?text=No+Thumbnail'">
+                    <span class="duration-badge">${video.duration || 'N/A'}</span>
+                    ${video.quality && video.quality !== 'N/A' ? `<span class="quality-badge">${video.quality}</span>` : ''}
+                </div>
+                <div class="video-info">
+                    <div class="video-title">${video.title || 'Untitled'}</div>
+                    <div class="video-meta">
+                        ${video.uploader ? `<span class="uploader-name"><i class="fas fa-user"></i> ${video.uploader}</span>` : ''}
+                        <span class="views-count"><i class="fas fa-eye"></i> ${video.views || 0}</span>
+                    </div>
+                </div>
             `;
-            
-            DOM.toastContainer.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.style.animation = 'fadeOut 0.3s ease';
-                setTimeout(() => toast.remove(), 300);
-            }, 3500);
+
+            card.addEventListener('click', () => {
+                window.location.href = `video.html?id=${encodeURIComponent(video.id)}`;
+            });
+
+            DOM.results.appendChild(card);
+        });
+    }
+
+    // ============== UPDATE RESULTS COUNT ==============
+    function updateResultsCount(count) {
+        if (DOM.resultsCount) {
+            DOM.resultsCount.textContent = `${count || 0} videos found`;
+        }
+    }
+
+    // ============== SEARCH ==============
+    function performSearch() {
+        if (!DOM.searchInput) return;
+
+        const query = DOM.searchInput.value.trim();
+        if (!query) {
+            showToast('Please enter a search term', 'info');
+            return;
         }
 
-        console.log('🔥 The Genesis loaded successfully!');
-        console.log('📚 Dev Zikky Tech');
-        console.log('💡 Press Ctrl+K to search');
-    </script>
+        state.searchQuery = query;
+        state.currentPage = 1;
+        state.hasMore = true;
+        state.videos = [];
+        if (DOM.results) DOM.results.innerHTML = '';
+        if (DOM.endResults) DOM.endResults.style.display = 'none';
+
+        showToast(`Searching for "${query}"...`, 'info');
+        loadVideos();
+    }
+
+    // ============== EVENT LISTENERS ==============
+    function setupEventListeners() {
+        // Search
+        if (DOM.searchBtn) {
+            DOM.searchBtn.addEventListener('click', performSearch);
+        }
+        if (DOM.searchInput) {
+            DOM.searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') performSearch();
+            });
+        }
+
+        // Theme Toggle
+        if (DOM.themeToggle) {
+            DOM.themeToggle.addEventListener('click', toggleTheme);
+        }
+
+        // Menu Toggle
+        if (DOM.menuToggle && DOM.navLinks) {
+            DOM.menuToggle.addEventListener('click', () => {
+                DOM.navLinks.classList.toggle('active');
+            });
+
+            DOM.navLinks.querySelectorAll('a').forEach(link => {
+                link.addEventListener('click', () => {
+                    DOM.navLinks.classList.remove('active');
+                });
+            });
+        }
+
+        // Genre Filters
+        if (DOM.genreFilters) {
+            const filterBtns = DOM.genreFilters.querySelectorAll('.filter-btn');
+            filterBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    filterBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    state.currentGenre = btn.dataset.genre;
+                    state.currentPage = 1;
+                    state.hasMore = true;
+                    state.videos = [];
+                    if (DOM.results) DOM.results.innerHTML = '';
+                    if (DOM.endResults) DOM.endResults.style.display = 'none';
+                    loadVideos();
+                });
+            });
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                if (DOM.searchInput) DOM.searchInput.focus();
+            }
+            if (e.key === 'Escape' && document.activeElement === DOM.searchInput) {
+                if (DOM.searchInput) {
+                    DOM.searchInput.value = '';
+                    DOM.searchInput.blur();
+                }
+            }
+        });
+    }
+
+    // ============== SCROLL ==============
+    function setupScroll() {
+        window.addEventListener('scroll', () => {
+            if (DOM.backToTop) {
+                if (window.scrollY > 400) {
+                    DOM.backToTop.classList.add('show');
+                } else {
+                    DOM.backToTop.classList.remove('show');
+                }
+            }
+        });
+
+        if (DOM.backToTop) {
+            DOM.backToTop.addEventListener('click', () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        }
+    }
+
+    // ============== THEME ==============
+    function toggleTheme() {
+        document.body.classList.toggle('light-theme');
+        if (DOM.themeToggle) {
+            const icon = DOM.themeToggle.querySelector('i');
+            if (document.body.classList.contains('light-theme')) {
+                icon.className = 'fas fa-sun';
+                localStorage.setItem('theme', 'light');
+            } else {
+                icon.className = 'fas fa-moon';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+    }
+
+    function loadTheme() {
+        if (localStorage.getItem('theme') === 'light') {
+            document.body.classList.add('light-theme');
+            if (DOM.themeToggle) {
+                DOM.themeToggle.querySelector('i').className = 'fas fa-sun';
+            }
+        }
+    }
+
+    // ============== TOAST ==============
+    function showToast(message, type = 'info') {
+        if (!DOM.toastContainer) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+
+        let icon = 'info-circle';
+        if (type === 'success') icon = 'check-circle';
+        if (type === 'error') icon = 'exclamation-circle';
+
+        toast.innerHTML = `
+            <i class="fas fa-${icon}"></i>
+            <span>${message}</span>
+        `;
+
+        DOM.toastContainer.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 3500);
+    }
+
+    console.log('🔥 The Genesis loaded successfully!');
+    console.log('📚 Dev Zikky Tech');
+    console.log('💡 Press Ctrl+K to search');
+</script>
 </body>
 </html>
 
