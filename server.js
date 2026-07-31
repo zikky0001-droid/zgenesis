@@ -23,10 +23,6 @@ const PORT = process.env.PORT || 10000;
 // ============================================
 // 2. ⚙️ GLOBAL CONFIGURATION & CONSTANTS
 // ============================================
-
-// Server start time (for uptime tracking)
-const SERVER_START_TIME = Date.now();
-
 // ----- URL CONSTANTS -----
 const URLS = {
     BASE: 'https://amp.xnxx.com/',
