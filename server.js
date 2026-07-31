@@ -26,16 +26,16 @@ const PORT = process.env.PORT || 10000;
 
 // ----- URL CONSTANTS -----
 const URLS = {
-    BASE: 'https://amp.xnxx.com/',
-    SEARCH: 'https://amp.xnxx.com/search/',
-    VIDEO: 'https://amp.xnxx.com/video-',
-    API: 'https://amp.xnxx.com'
+    BASE: 'https://amp.thnxx.com/',
+    SEARCH: 'https://amp.thnxx.com/search/',
+    VIDEO: 'https://amp.thnxx.com/video-',
+    API: 'https://api.mangadex.org'
 };
 
 // ----- SUPPORTED DOMAINS -----
 const SUPPORTED_DOMAINS = [
     'thh.com',
-    'xnxx.com', 
+    'thnxx.com', 
     'txnhh.com',
     'thxx.com'
 ];
@@ -541,7 +541,7 @@ function scrapeVideoDetails(html) {
                             .replace(/[^a-z0-9]/g, '_')
                             .replace(/_+/g, '_')
                             .trim();
-                        details.downloadUrl = `${base}${securePart}&download=xnxx_${filename}_SD.mp4`;
+                        details.downloadUrl = `${base}${securePart}&download=thnxx_${filename}_SD.mp4`;
                     }
                 }
             }
@@ -583,7 +583,7 @@ function scrapeVideoDetails(html) {
                         if (titleMatch) {
                             let fullUrl = urlMatch ? urlMatch[1] : '#';
                             if (fullUrl && !fullUrl.startsWith('http')) {
-                                fullUrl = `https://amp.xnxx.com${fullUrl}`;
+                                fullUrl = `https://amp.thnxx.com${fullUrl}`;
                             }
                             
                             details.relatedVideos.push({
