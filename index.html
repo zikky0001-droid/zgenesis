@@ -945,52 +945,65 @@
         loadTheme();
     });
 
-    // ============== LOAD VIDEOS ==============
-    async function loadVideos() {
-        if (state.isLoading || !state.hasMore) return;
+   // ============== LOAD VIDEOS ==============
+async function loadVideos() {
+    if (state.isLoading || !state.hasMore) return;
 
-        state.isLoading = true;
-        if (DOM.loading) DOM.loading.classList.add('show');
+    state.isLoading = true;
+    if (DOM.loading) DOM.loading.classList.add('show');
 
-        try {
-            const params = new URLSearchParams({
-                page: state.currentPage,
-                search: state.searchQuery,
-                genre: state.currentGenre
+    try {
+        // Determine which API endpoint to use
+        let endpoint = '/api/home';
+        let params = new URLSearchParams({
+            page: state.currentPage,
+            genre: state.currentGenre
+        });
+
+        // If there's a search query, use the search API
+        if (state.searchQuery) {
+            endpoint = '/api/search';
+            params = new URLSearchParams({
+                q: state.searchQuery,
+                page: state.currentPage
             });
-
-            console.log('📡 Fetching:', `${API_BASE}/api/home?${params}`);
-
-            const response = await fetch(`${API_BASE}/api/home?${params}`);
-            if (!response.ok) throw new Error('Failed to load videos');
-            const data = await response.json();
-
-            console.log('✅ API Response:', data);
-
-            if (!data.videos || data.videos.length === 0) {
-                state.hasMore = false;
-                if (DOM.endResults) DOM.endResults.style.display = 'block';
-                return;
-            }
-
-            renderVideos(data.videos);
-            updateResultsCount(data.total);
-
-            state.currentPage++;
-            state.hasMore = data.hasMore;
-
-            if (!state.hasMore && DOM.endResults) {
-                DOM.endResults.style.display = 'block';
-            }
-
-        } catch (error) {
-            console.error('❌ Error loading videos:', error);
-            showToast('Failed to load videos', 'error');
-        } finally {
-            state.isLoading = false;
-            if (DOM.loading) DOM.loading.classList.remove('show');
         }
+
+        console.log('📡 Fetching:', `${API_BASE}${endpoint}?${params}`);
+
+        const response = await fetch(`${API_BASE}${endpoint}?${params}`);
+        if (!response.ok) throw new Error('Failed to load videos');
+        const data = await response.json();
+
+        console.log('✅ API Response:', data);
+
+        if (!data.videos || data.videos.length === 0) {
+            state.hasMore = false;
+            if (DOM.endResults) DOM.endResults.style.display = 'block';
+            if (state.searchQuery) {
+                showToast(`No videos found for "${state.searchQuery}"`, 'info');
+            }
+            return;
+        }
+
+        renderVideos(data.videos);
+        updateResultsCount(data.total);
+
+        state.currentPage++;
+        state.hasMore = data.hasMore;
+
+        if (!state.hasMore && DOM.endResults) {
+            DOM.endResults.style.display = 'block';
+        }
+
+    } catch (error) {
+        console.error('❌ Error loading videos:', error);
+        showToast('Failed to load videos', 'error');
+    } finally {
+        state.isLoading = false;
+        if (DOM.loading) DOM.loading.classList.remove('show');
     }
+}
 
     // ============== RENDER VIDEOS ==============
     function renderVideos(videos) {
