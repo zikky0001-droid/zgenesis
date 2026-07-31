@@ -26,16 +26,16 @@ const PORT = process.env.PORT || 10000;
 
 // ----- URL CONSTANTS -----
 const URLS = {
-    BASE: 'https://amp.xnxx.com/',
-    SEARCH: 'https://amp.xnxx.com/search/',
-    VIDEO: 'https://amp.xnxx.com/video-',
+    BASE: 'https://amp.thnxx.com/',
+    SEARCH: 'https://amp.thnxx.com/search/',
+    VIDEO: 'https://amp.thnxx.com/video-',
     API: 'https://zgenesis.onrender.com'
 };
 
 // ----- SUPPORTED DOMAINS -----
 const SUPPORTED_DOMAINS = [
-    'amp.xnxx.com',
-    'xnxx.com', 
+    'amp.thnxx.com',
+    'thnxx.com', 
     'xnhh.com',
     'thxx.com'
 ];
@@ -541,7 +541,7 @@ function scrapeVideoDetails(html) {
                             .replace(/[^a-z0-9]/g, '_')
                             .replace(/_+/g, '_')
                             .trim();
-                        details.downloadUrl = `${base}${securePart}&download=xnxx_${filename}_SD.mp4`;
+                        details.downloadUrl = `${base}${securePart}&download=thnxx_${filename}_SD.mp4`;
                     }
                 }
             }
@@ -583,7 +583,7 @@ function scrapeVideoDetails(html) {
                         if (titleMatch) {
                             let fullUrl = urlMatch ? urlMatch[1] : '#';
                             if (fullUrl && !fullUrl.startsWith('http')) {
-                                fullUrl = `https://amp.xnxx.com${fullUrl}`;
+                                fullUrl = `https://amp.thnxx.com${fullUrl}`;
                             }
                             
                             details.relatedVideos.push({
@@ -784,14 +784,123 @@ function ensureDirectories() {
 // 8. 🛣️ API ROUTES
 // ============================================
 
-// ----- HEALTH CHECK -----
+// ============================================
+// 📊 IMPROVED HEALTH CHECK ENDPOINT
+// ============================================
 
-app.get('/ping', (req, res) => {
-    res.status(200).json({
-        status: 'alive',
-        timestamp: new Date().toISOString(),
-        cacheSize: cache.size
+// Server start time (for uptime tracking)
+const SERVER_START_TIME = Date.now();
+
+// Health check function to avoid code duplication
+function getHealthData() {
+    const now = Date.now();
+    const uptimeMs = now - SERVER_START_TIME;
+    const uptimeSeconds = Math.floor(uptimeMs / 1000);
+    const uptimeMinutes = Math.floor(uptimeSeconds / 60);
+    const uptimeHours = Math.floor(uptimeMinutes / 60);
+    const uptimeDays = Math.floor(uptimeHours / 24);
+
+    // Format uptime in human-readable format
+    let uptimeString = '';
+    if (uptimeDays > 0) uptimeString += `${uptimeDays}d `;
+    if (uptimeHours % 24 > 0) uptimeString += `${uptimeHours % 24}h `;
+    if (uptimeMinutes % 60 > 0) uptimeString += `${uptimeMinutes % 60}m `;
+    if (uptimeSeconds % 60 > 0) uptimeString += `${uptimeSeconds % 60}s`;
+    if (!uptimeString) uptimeString = '0s';
+
+    // Get time in UTC+1 (West Africa Time)
+    const nowUTC1 = new Date(now + (60 * 60 * 1000));
+    const timeUTC1 = nowUTC1.toISOString().replace('Z', '+01:00');
+    const timeUTC1Formatted = nowUTC1.toLocaleString('en-US', {
+        timeZone: 'Africa/Lagos',
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
     });
+
+    // Get all available routes
+    const routes = [
+        { method: 'GET', path: '/ping', description: 'Health check' },
+        { method: 'GET', path: '/health', description: 'Health check (alias)' },
+        { method: 'GET', path: '/api/home', description: 'Get homepage videos' },
+        { method: 'GET', path: '/api/search', description: 'Search videos' },
+        { method: 'GET', path: '/api/video/:id', description: 'Get video details' },
+        { method: 'GET', path: '/api/stream/:id', description: 'Stream video' },
+        { method: 'GET', path: '/api/download/:id', description: 'Download video' },
+        { method: 'POST', path: '/api/clear-cache', description: 'Clear cache' },
+        { method: 'GET', path: '/api/cache-status', description: 'Cache status' },
+        { method: 'GET', path: '/', description: 'Homepage' },
+        { method: 'GET', path: '/video', description: 'Video player page' }
+    ];
+
+    // Get memory usage
+    const memoryUsage = process.memoryUsage();
+    const memory = {
+        rss: `${Math.round(memoryUsage.rss / 1024 / 1024)} MB`,
+        heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)} MB`,
+        heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)} MB`,
+        external: `${Math.round(memoryUsage.external / 1024 / 1024)} MB`
+    };
+
+    // Get Node.js version
+    const nodeVersion = process.version;
+
+    // Get platform info
+    const platform = {
+        os: process.platform,
+        arch: process.arch,
+        cpus: require('os').cpus().length,
+        totalMemory: `${Math.round(require('os').totalmem() / 1024 / 1024 / 1024)} GB`,
+        freeMemory: `${Math.round(require('os').freemem() / 1024 / 1024 / 1024)} GB`
+    };
+
+    // Build response
+    return {
+        status: '🟢 alive',
+        timestamp: {
+            iso: new Date().toISOString(),
+            utc1: timeUTC1,
+            utc1Formatted: timeUTC1Formatted,
+            unix: Math.floor(now / 1000)
+        },
+        uptime: {
+            milliseconds: uptimeMs,
+            seconds: uptimeSeconds,
+            minutes: uptimeMinutes,
+            hours: uptimeHours,
+            days: uptimeDays,
+            humanReadable: uptimeString
+        },
+        server: {
+            nodeVersion: nodeVersion,
+            environment: process.env.NODE_ENV || 'development',
+            port: PORT,
+            platform: platform
+        },
+        memory: memory,
+        cache: {
+            size: cache.size,
+            ttl: `${CACHE.TTL / 60000} minutes`
+        },
+        endpoints: routes
+    };
+}
+
+// ===== /ping endpoint =====
+app.get('/ping', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.status(200).json(getHealthData());
+});
+
+// ===== /health endpoint (alias) =====
+app.get('/health', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.status(200).json(getHealthData());
 });
 
 // ----- HOME ROUTE -----
