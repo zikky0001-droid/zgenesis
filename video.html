@@ -1018,320 +1018,332 @@
 
     <script>
         // ============================================
-        // THE GENESIS - VIDEO PAGE LOGIC
-        // By Dev Zikky Tech
-        // ============================================
+// THE GENESIS - VIDEO PAGE LOGIC
+// By Dev Zikky Tech
+// ============================================
 
-        // ============== DOM REFS ==============
-        const el = {
-            title: document.getElementById('videoTitle'),
-            uploader: document.getElementById('videoUploader'),
-            duration: document.getElementById('videoDuration'),
-            views: document.getElementById('videoViews'),
-            quality: document.getElementById('videoQuality'),
-            rating: document.getElementById('videoRating'),
-            likes: document.getElementById('likesCount'),
-            dislikes: document.getElementById('dislikesCount'),
-            tagsContainer: document.getElementById('tagsContainer'),
-            player: document.getElementById('mainVideo'),
-            downloadBtn: document.getElementById('downloadBtn'),
-            streamBtn: document.getElementById('streamBtn'),
-            backButton: document.getElementById('backButton'),
-            relatedGrid: document.getElementById('relatedGrid'),
-            toastContainer: document.getElementById('toastContainer'),
-            themeToggle: document.getElementById('themeToggle'),
-            menuToggle: document.getElementById('menuToggle'),
-            navLinks: document.getElementById('navLinks'),
-            videoOverlay: document.getElementById('videoOverlay'),
-            errorState: document.getElementById('errorState'),
-            playerWrapper: document.getElementById('playerWrapper'),
-            videoInfoSection: document.getElementById('videoInfoSection')
-        };
+// ============== API BASE ==============
+const API_BASE = window.location.origin;
 
-        // ============== STATE ==============
-        let currentVideo = null;
+// ============== DOM REFS ==============
+const el = {
+    title: document.getElementById('videoTitle'),
+    uploader: document.getElementById('videoUploader'),
+    duration: document.getElementById('videoDuration'),
+    views: document.getElementById('videoViews'),
+    quality: document.getElementById('videoQuality'),
+    rating: document.getElementById('videoRating'),
+    likes: document.getElementById('likesCount'),
+    dislikes: document.getElementById('dislikesCount'),
+    tagsContainer: document.getElementById('tagsContainer'),
+    player: document.getElementById('mainVideo'),
+    downloadBtn: document.getElementById('downloadBtn'),
+    streamBtn: document.getElementById('streamBtn'),
+    backButton: document.getElementById('backButton'),
+    relatedGrid: document.getElementById('relatedGrid'),
+    toastContainer: document.getElementById('toastContainer'),
+    themeToggle: document.getElementById('themeToggle'),
+    menuToggle: document.getElementById('menuToggle'),
+    navLinks: document.getElementById('navLinks'),
+    videoOverlay: document.getElementById('videoOverlay'),
+    errorState: document.getElementById('errorState'),
+    playerWrapper: document.getElementById('playerWrapper'),
+    videoInfoSection: document.getElementById('videoInfoSection')
+};
 
-        // ============== INIT ==============
-        document.addEventListener('DOMContentLoaded', () => {
-            loadTheme();
-            setupVideoPage();
-            setupEventListeners();
-        });
+// ============== STATE ==============
+let currentVideo = null;
 
-        // ============== SETUP VIDEO PAGE ==============
-        function setupVideoPage() {
-            const params = new URLSearchParams(window.location.search);
-            const videoId = params.get('id');
-            
-            if (videoId) {
-                loadVideoDetails(videoId);
-            } else {
-                showError('No video selected', 'Please go back to the gallery and select a video.');
-            }
-        }
+// ============== INIT ==============
+document.addEventListener('DOMContentLoaded', () => {
+    loadTheme();
+    setupVideoPage();
+    setupEventListeners();
+});
 
-        // ============== SHOW ERROR ==============
-        function showError(title, message) {
-            if (el.errorState) {
-                el.errorState.classList.add('show');
-                el.errorState.querySelector('h2').textContent = title || 'Video Not Found';
-                el.errorState.querySelector('p').textContent = message || 'The video you\'re looking for doesn\'t exist.';
-            }
-            if (el.playerWrapper) el.playerWrapper.style.display = 'none';
-            if (el.videoInfoSection) el.videoInfoSection.style.display = 'none';
-            showToast(title || 'Error loading video', 'error');
-        }
+// ============== SETUP VIDEO PAGE ==============
+function setupVideoPage() {
+    const params = new URLSearchParams(window.location.search);
+    const videoId = params.get('id');
+    
+    if (videoId) {
+        loadVideoDetails(videoId);
+    } else {
+        showError('No video selected', 'Please go back to the gallery and select a video.');
+    }
+}
 
-        // ============== LOAD VIDEO DETAILS ==============
-        async function loadVideoDetails(videoId) {
-            try {
-                showToast('Loading video...', 'info');
-                
-               // 🚀 REAL API CALL - ENABLED
-const response = await fetch(`${API_BASE}/api/video/${encodeURIComponent(videoId)}`);
-if (!response.ok) throw new Error('Failed to load video');
-const video = await response.json();
+// ============== SHOW ERROR ==============
+function showError(title, message) {
+    if (el.errorState) {
+        el.errorState.classList.add('show');
+        el.errorState.querySelector('h2').textContent = title || 'Video Not Found';
+        el.errorState.querySelector('p').textContent = message || 'The video you\'re looking for doesn\'t exist.';
+    }
+    if (el.playerWrapper) el.playerWrapper.style.display = 'none';
+    if (el.videoInfoSection) el.videoInfoSection.style.display = 'none';
+    showToast(title || 'Error loading video', 'error');
+}
 
-        // ============== DISPLAY VIDEO ==============
-        function displayVideo(video) {
-            // Title
-            if (el.title) el.title.textContent = video.title || 'Untitled';
-            
-            // Uploader
-            if (el.uploader) el.uploader.textContent = video.uploader || 'Unknown';
-            
-            // Duration
-            if (el.duration) {
-                el.duration.textContent = video.duration || 'N/A';
-                el.duration.className = 'meta-duration';
-            }
-            
-            // Views
-            if (el.views) {
-                el.views.textContent = video.views || '0';
-                el.views.className = 'meta-views';
-            }
-            
-            // Quality
-            if (el.quality) {
-                el.quality.textContent = video.quality || 'N/A';
-                el.quality.className = 'meta-quality';
-            }
-            
-            // Rating
-            if (el.rating) el.rating.textContent = `⭐ ${video.rating || 'N/A'}`;
-            
-            // Likes/Dislikes
-            if (el.likes) el.likes.textContent = video.likes || '0';
-            if (el.dislikes) el.dislikes.textContent = video.dislikes || '0';
-            
-            // Tags
-            if (el.tagsContainer) {
-                el.tagsContainer.innerHTML = '';
-                if (video.tags && video.tags.length > 0) {
-                    video.tags.forEach(tag => {
-                        const tagEl = document.createElement('span');
-                        tagEl.className = 'tag';
-                        tagEl.textContent = `#${tag}`;
-                        el.tagsContainer.appendChild(tagEl);
-                    });
-                } else {
-                    el.tagsContainer.innerHTML = '<span class="tag">No tags</span>';
-                }
-            }
-            
-            // Video Player
-            if (el.player) {
-                if (video.videoUrl) {
-                    el.player.src = video.videoUrl;
-                    el.player.poster = video.thumbnail || '';
-                    // Hide loading overlay
-                    if (el.videoOverlay) el.videoOverlay.classList.remove('active');
-                } else {
-                    if (el.videoOverlay) el.videoOverlay.classList.add('active');
-                    el.videoOverlay.querySelector('span').textContent = 'No video source available';
-                }
-            }
-            
-            // Download Button
-            if (el.downloadBtn) {
-                if (video.downloadUrl && video.downloadUrl !== '#') {
-                    el.downloadBtn.onclick = () => {
-                        window.open(video.downloadUrl, '_blank');
-                    };
-                    el.downloadBtn.disabled = false;
-                    el.downloadBtn.style.opacity = '1';
-                    el.downloadBtn.style.cursor = 'pointer';
-                } else {
-                    el.downloadBtn.disabled = true;
-                    el.downloadBtn.style.opacity = '0.5';
-                    el.downloadBtn.style.cursor = 'not-allowed';
-                    el.downloadBtn.title = 'Download not available';
-                }
-            }
-            
-            // Stream Button
-            if (el.streamBtn && el.player) {
-                el.streamBtn.onclick = () => {
-                    el.player.play();
-                };
-            }
-            
-            // Related Videos
-            if (video.relatedVideos && video.relatedVideos.length > 0 && el.relatedGrid) {
-                renderRelatedVideos(video.relatedVideos);
-            }
-            
-            // Back Button
-            if (el.backButton) {
-                el.backButton.onclick = () => {
-                    window.location.href = 'index.html';
-                };
-            }
-            
-            // Hide error state, show content
-            if (el.errorState) el.errorState.classList.remove('show');
-            if (el.playerWrapper) el.playerWrapper.style.display = 'block';
-            if (el.videoInfoSection) el.videoInfoSection.style.display = 'block';
-        }
+// ============== LOAD VIDEO DETAILS ==============
+async function loadVideoDetails(videoId) {
+    try {
+        showToast('Loading video...', 'info');
+        
+        // ✅ CORRECT: Video API call
+        const response = await fetch(`${API_BASE}/api/video/${encodeURIComponent(videoId)}`);
+        if (!response.ok) throw new Error('Failed to load video');
+        const video = await response.json();
+        
+        currentVideo = video;
+        displayVideo(video);  // ✅ Call displayVideo with the video data
+        
+    } catch (error) {
+        console.error('Error loading video:', error);
+        showToast('Failed to load video', 'error');
+        showError('Failed to load video', error.message || 'Please try again later.');
+    }
+}
 
-        // ============== RENDER RELATED VIDEOS ==============
-        function renderRelatedVideos(relatedVideos) {
-            const grid = el.relatedGrid;
-            if (!grid) return;
-            
-            grid.innerHTML = '';
-            
-            relatedVideos.forEach(video => {
-                const card = document.createElement('div');
-                card.className = 'related-card';
-                
-                card.innerHTML = `
-                    <a href="video.html?id=${encodeURIComponent(video.id || video.url)}">
-                        <div class="related-thumb">
-                            <img src="${video.thumbnail || 'https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'}" 
-                                 alt="${video.title}" 
-                                 loading="lazy"
-                                 onerror="this.src='https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'">
-                            <span class="thumb-duration">${video.duration || 'N/A'}</span>
-                        </div>
-                        <div class="related-info">
-                            <div class="related-title">${video.title || 'Untitled'}</div>
-                            <div class="related-meta">
-                                <span class="related-uploader">${video.uploader || 'Unknown'}</span>
-                                <span class="related-rating">⭐ ${video.rating || 'N/A'}</span>
-                            </div>
-                        </div>
-                    </a>
-                `;
-                
-                grid.appendChild(card);
+// ============== DISPLAY VIDEO ==============
+function displayVideo(video) {
+    // Title
+    if (el.title) el.title.textContent = video.title || 'Untitled';
+    
+    // Uploader
+    if (el.uploader) el.uploader.textContent = video.uploader || 'Unknown';
+    
+    // Duration
+    if (el.duration) {
+        el.duration.textContent = video.duration || 'N/A';
+        el.duration.className = 'meta-duration';
+    }
+    
+    // Views
+    if (el.views) {
+        el.views.textContent = video.views || '0';
+        el.views.className = 'meta-views';
+    }
+    
+    // Quality
+    if (el.quality) {
+        el.quality.textContent = video.quality || 'N/A';
+        el.quality.className = 'meta-quality';
+    }
+    
+    // Rating
+    if (el.rating) el.rating.textContent = `⭐ ${video.rating || 'N/A'}`;
+    
+    // Likes/Dislikes
+    if (el.likes) el.likes.textContent = video.likes || '0';
+    if (el.dislikes) el.dislikes.textContent = video.dislikes || '0';
+    
+    // Tags
+    if (el.tagsContainer) {
+        el.tagsContainer.innerHTML = '';
+        if (video.tags && video.tags.length > 0) {
+            video.tags.forEach(tag => {
+                const tagEl = document.createElement('span');
+                tagEl.className = 'tag';
+                tagEl.textContent = `#${tag}`;
+                el.tagsContainer.appendChild(tagEl);
             });
+        } else {
+            el.tagsContainer.innerHTML = '<span class="tag">No tags</span>';
         }
-
-        // ============== EVENT LISTENERS ==============
-        function setupEventListeners() {
-            // Theme Toggle
-            if (el.themeToggle) {
-                el.themeToggle.addEventListener('click', toggleTheme);
-            }
-            
-            // Menu Toggle
-            if (el.menuToggle && el.navLinks) {
-                el.menuToggle.addEventListener('click', () => {
-                    el.navLinks.classList.toggle('active');
-                });
-                
-                el.navLinks.querySelectorAll('a').forEach(link => {
-                    link.addEventListener('click', () => {
-                        el.navLinks.classList.remove('active');
-                    });
-                });
-            }
-            
-            // Video player events
-            if (el.player) {
-                // Show loading overlay when buffering
-                el.player.addEventListener('waiting', () => {
-                    if (el.videoOverlay) {
-                        el.videoOverlay.classList.add('active');
-                        el.videoOverlay.querySelector('span').textContent = 'Buffering...';
-                    }
-                });
-                
-                // Hide loading overlay when playing
-                el.player.addEventListener('playing', () => {
-                    if (el.videoOverlay) el.videoOverlay.classList.remove('active');
-                });
-                
-                // Hide loading overlay when can play
-                el.player.addEventListener('canplay', () => {
-                    if (el.videoOverlay) el.videoOverlay.classList.remove('active');
-                });
-                
-                // Show error on video error
-                el.player.addEventListener('error', (e) => {
-                    console.error('Video error:', e);
-                    if (el.videoOverlay) {
-                        el.videoOverlay.classList.add('active');
-                        el.videoOverlay.querySelector('span').textContent = '⚠️ Video failed to load';
-                    }
-                    showToast('Video playback error', 'error');
-                });
+    }
+    
+    // Video Player
+    if (el.player) {
+        if (video.videoUrl) {
+            el.player.src = video.videoUrl;
+            el.player.poster = video.thumbnail || '';
+            if (el.videoOverlay) el.videoOverlay.classList.remove('active');
+        } else {
+            if (el.videoOverlay) {
+                el.videoOverlay.classList.add('active');
+                el.videoOverlay.querySelector('span').textContent = 'No video source available';
             }
         }
+    }
+    
+    // Download Button
+    if (el.downloadBtn) {
+        if (video.downloadUrl && video.downloadUrl !== '#') {
+            el.downloadBtn.onclick = () => {
+                window.open(video.downloadUrl, '_blank');
+            };
+            el.downloadBtn.disabled = false;
+            el.downloadBtn.style.opacity = '1';
+            el.downloadBtn.style.cursor = 'pointer';
+        } else {
+            el.downloadBtn.disabled = true;
+            el.downloadBtn.style.opacity = '0.5';
+            el.downloadBtn.style.cursor = 'not-allowed';
+            el.downloadBtn.title = 'Download not available';
+        }
+    }
+    
+    // Stream Button
+    if (el.streamBtn && el.player) {
+        el.streamBtn.onclick = () => {
+            el.player.play();
+        };
+    }
+    
+    // Related Videos
+    if (video.relatedVideos && video.relatedVideos.length > 0 && el.relatedGrid) {
+        renderRelatedVideos(video.relatedVideos);
+    }
+    
+    // Back Button
+    if (el.backButton) {
+        el.backButton.onclick = () => {
+            window.location.href = 'index.html';
+        };
+    }
+    
+    // Hide error state, show content
+    if (el.errorState) el.errorState.classList.remove('show');
+    if (el.playerWrapper) el.playerWrapper.style.display = 'block';
+    if (el.videoInfoSection) el.videoInfoSection.style.display = 'block';
+}
 
-        // ============== THEME ==============
-        function toggleTheme() {
-            document.body.classList.toggle('light-theme');
-            if (el.themeToggle) {
-                const icon = el.themeToggle.querySelector('i');
-                if (document.body.classList.contains('light-theme')) {
-                    icon.className = 'fas fa-sun';
-                    localStorage.setItem('theme', 'light');
-                } else {
-                    icon.className = 'fas fa-moon';
-                    localStorage.setItem('theme', 'dark');
-                }
+// ============== RENDER RELATED VIDEOS ==============
+function renderRelatedVideos(relatedVideos) {
+    const grid = el.relatedGrid;
+    if (!grid) return;
+    
+    grid.innerHTML = '';
+    
+    relatedVideos.forEach(video => {
+        const card = document.createElement('div');
+        card.className = 'related-card';
+        
+        const videoId = video.id || video.url?.split('/').pop() || 'unknown';
+        
+        card.innerHTML = `
+            <a href="video.html?id=${encodeURIComponent(videoId)}">
+                <div class="related-thumb">
+                    <img src="${video.thumbnail || 'https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'}" 
+                         alt="${video.title}" 
+                         loading="lazy"
+                         onerror="this.src='https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'">
+                    <span class="thumb-duration">${video.duration || 'N/A'}</span>
+                </div>
+                <div class="related-info">
+                    <div class="related-title">${video.title || 'Untitled'}</div>
+                    <div class="related-meta">
+                        <span class="related-uploader">${video.uploader || 'Unknown'}</span>
+                        <span class="related-rating">⭐ ${video.rating || 'N/A'}</span>
+                    </div>
+                </div>
+            </a>
+        `;
+        
+        grid.appendChild(card);
+    });
+}
+
+// ============== EVENT LISTENERS ==============
+function setupEventListeners() {
+    // Theme Toggle
+    if (el.themeToggle) {
+        el.themeToggle.addEventListener('click', toggleTheme);
+    }
+    
+    // Menu Toggle
+    if (el.menuToggle && el.navLinks) {
+        el.menuToggle.addEventListener('click', () => {
+            el.navLinks.classList.toggle('active');
+        });
+        
+        el.navLinks.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                el.navLinks.classList.remove('active');
+            });
+        });
+    }
+    
+    // Video player events
+    if (el.player) {
+        el.player.addEventListener('waiting', () => {
+            if (el.videoOverlay) {
+                el.videoOverlay.classList.add('active');
+                el.videoOverlay.querySelector('span').textContent = 'Buffering...';
             }
-        }
-
-        function loadTheme() {
-            if (localStorage.getItem('theme') === 'light') {
-                document.body.classList.add('light-theme');
-                if (el.themeToggle) {
-                    el.themeToggle.querySelector('i').className = 'fas fa-sun';
-                }
+        });
+        
+        el.player.addEventListener('playing', () => {
+            if (el.videoOverlay) el.videoOverlay.classList.remove('active');
+        });
+        
+        el.player.addEventListener('canplay', () => {
+            if (el.videoOverlay) el.videoOverlay.classList.remove('active');
+        });
+        
+        el.player.addEventListener('error', (e) => {
+            console.error('Video error:', e);
+            if (el.videoOverlay) {
+                el.videoOverlay.classList.add('active');
+                el.videoOverlay.querySelector('span').textContent = '⚠️ Video failed to load';
             }
-        }
+            showToast('Video playback error', 'error');
+        });
+    }
+}
 
-        // ============== TOAST ==============
-        function showToast(message, type = 'info') {
-            const container = el.toastContainer;
-            if (!container) return;
-            
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            
-            let icon = 'info-circle';
-            if (type === 'success') icon = 'check-circle';
-            if (type === 'error') icon = 'exclamation-circle';
-            
-            toast.innerHTML = `
-                <i class="fas fa-${icon}"></i>
-                <span>${message}</span>
-            `;
-            
-            container.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.style.animation = 'fadeOut 0.3s ease';
-                setTimeout(() => toast.remove(), 300);
-            }, 3500);
+// ============== THEME ==============
+function toggleTheme() {
+    document.body.classList.toggle('light-theme');
+    if (el.themeToggle) {
+        const icon = el.themeToggle.querySelector('i');
+        if (document.body.classList.contains('light-theme')) {
+            icon.className = 'fas fa-sun';
+            localStorage.setItem('theme', 'light');
+        } else {
+            icon.className = 'fas fa-moon';
+            localStorage.setItem('theme', 'dark');
         }
+    }
+}
 
-        console.log('🎬 Video Player loaded successfully!');
-        console.log('📚 Dev Zikky Tech');
+function loadTheme() {
+    if (localStorage.getItem('theme') === 'light') {
+        document.body.classList.add('light-theme');
+        if (el.themeToggle) {
+            el.themeToggle.querySelector('i').className = 'fas fa-sun';
+        }
+    }
+}
+
+// ============== TOAST ==============
+function showToast(message, type = 'info') {
+    const container = el.toastContainer;
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    let icon = 'info-circle';
+    if (type === 'success') icon = 'check-circle';
+    if (type === 'error') icon = 'exclamation-circle';
+    
+    toast.innerHTML = `
+        <i class="fas fa-${icon}"></i>
+        <span>${message}</span>
+    `;
+    
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'fadeOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+console.log('🎬 Video Player loaded successfully!');
+console.log('📚 Dev Zikky Tech');
     </script>
 </body>
 </html>

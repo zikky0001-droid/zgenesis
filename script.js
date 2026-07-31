@@ -278,56 +278,21 @@ async function loadVideoDetails(videoId) {
     try {
         showToast('Loading video...', 'info');
         
-        // Mock data for now
-        const mockVideo = {
-            id: videoId,
-            title: 'Goku vs Android 21 (DB) AI',
-            uploader: 'Dairy Land',
-            duration: '11min',
-            quality: '1080p',
-            rating: '100.00%',
-            likes: '2920',
-            dislikes: '645',
-            views: '1,545,097',
-            thumbnail: 'https://via.placeholder.com/800x450?text=Anime+Video',
-            videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
-            downloadUrl: '#',
-            tags: ['anime', 'dragonball', 'action', 'fight', 'goku', 'android21'],
-            relatedVideos: [
-                {
-                    id: '2',
-                    title: 'Soaking My Stepsister Tight Shirt',
-                    uploader: 'Panty Land',
-                    duration: '20min',
-                    rating: '100%',
-                    thumbnail: 'https://via.placeholder.com/240x135?text=Related+1'
-                },
-                {
-                    id: '3',
-                    title: 'Busty Babe Rides His Cock',
-                    uploader: 'Wrecked',
-                    duration: '11min',
-                    rating: '100%',
-                    thumbnail: 'https://via.placeholder.com/240x135?text=Related+2'
-                }
-            ]
-        };
+        // 🚀 REAL API CALL - ENABLED
+        const response = await fetch(`${API_BASE}/api/video/${encodeURIComponent(videoId)}`);
+        if (!response.ok) throw new Error('Failed to load video');
+        const video = await response.json();
         
-        // Real API call (uncomment when backend is ready)
-        // const response = await fetch(`${API_BASE}/api/video/${encodeURIComponent(videoId)}`);
-        // if (!response.ok) throw new Error('Failed to load video');
-        // const video = await response.json();
-        
-        const video = mockVideo;
-        state.currentVideo = video;
-        
+        // ✅ THIS IS WHERE loadVideoDetails() SHOULD CLOSE
+        currentVideo = video;
         displayVideo(video);
         
     } catch (error) {
         console.error('Error loading video:', error);
         showToast('Failed to load video', 'error');
+        showError('Failed to load video', error.message || 'Please try again later.');
     }
-}
+}  
 
 // ============== DISPLAY VIDEO ==============
 function displayVideo(video) {
