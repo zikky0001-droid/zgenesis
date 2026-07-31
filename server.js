@@ -24,18 +24,21 @@ const PORT = process.env.PORT || 10000;
 // 2. ⚙️ GLOBAL CONFIGURATION & CONSTANTS
 // ============================================
 
+// Server start time (for uptime tracking)
+const SERVER_START_TIME = Date.now();
+
 // ----- URL CONSTANTS -----
 const URLS = {
-    BASE: 'https://amp.thnxx.com/',
-    SEARCH: 'https://amp.thnxx.com/search/',
-    VIDEO: 'https://amp.thnxx.com/video-',
+    BASE: 'https://amp.xnxx.com/',
+    SEARCH: 'https://amp.xnxx.com/search/',
+    VIDEO: 'https://amp.xnxx.com/video-',
     API: 'https://zgenesis.onrender.com'
 };
 
 // ----- SUPPORTED DOMAINS -----
 const SUPPORTED_DOMAINS = [
-    'amp.thnxx.com',
-    'thnxx.com', 
+    'amp.xnxx.com',
+    'xnxx.com', 
     'xnhh.com',
     'thxx.com'
 ];
@@ -541,7 +544,7 @@ function scrapeVideoDetails(html) {
                             .replace(/[^a-z0-9]/g, '_')
                             .replace(/_+/g, '_')
                             .trim();
-                        details.downloadUrl = `${base}${securePart}&download=thnxx_${filename}_SD.mp4`;
+                        details.downloadUrl = `${base}${securePart}&download=xnxx_${filename}_SD.mp4`;
                     }
                 }
             }
@@ -583,7 +586,7 @@ function scrapeVideoDetails(html) {
                         if (titleMatch) {
                             let fullUrl = urlMatch ? urlMatch[1] : '#';
                             if (fullUrl && !fullUrl.startsWith('http')) {
-                                fullUrl = `https://amp.thnxx.com${fullUrl}`;
+                                fullUrl = `https://amp.xnxx.com${fullUrl}`;
                             }
                             
                             details.relatedVideos.push({
@@ -791,8 +794,7 @@ function ensureDirectories() {
 // Server start time (for uptime tracking)
 const SERVER_START_TIME = Date.now();
 
-// Health check function to avoid code duplication
-function getHealthData() {
+app.get('/ping', (req, res) => {
     const now = Date.now();
     const uptimeMs = now - SERVER_START_TIME;
     const uptimeSeconds = Math.floor(uptimeMs / 1000);
@@ -809,7 +811,7 @@ function getHealthData() {
     if (!uptimeString) uptimeString = '0s';
 
     // Get time in UTC+1 (West Africa Time)
-    const nowUTC1 = new Date(now + (60 * 60 * 1000));
+    const nowUTC1 = new Date(now + (60 * 60 * 1000)); // UTC+1
     const timeUTC1 = nowUTC1.toISOString().replace('Z', '+01:00');
     const timeUTC1Formatted = nowUTC1.toLocaleString('en-US', {
         timeZone: 'Africa/Lagos',
@@ -826,7 +828,6 @@ function getHealthData() {
     // Get all available routes
     const routes = [
         { method: 'GET', path: '/ping', description: 'Health check' },
-        { method: 'GET', path: '/health', description: 'Health check (alias)' },
         { method: 'GET', path: '/api/home', description: 'Get homepage videos' },
         { method: 'GET', path: '/api/search', description: 'Search videos' },
         { method: 'GET', path: '/api/video/:id', description: 'Get video details' },
@@ -860,7 +861,7 @@ function getHealthData() {
     };
 
     // Build response
-    return {
+    const response = {
         status: '🟢 alive',
         timestamp: {
             iso: new Date().toISOString(),
@@ -889,18 +890,10 @@ function getHealthData() {
         },
         endpoints: routes
     };
-}
 
-// ===== /ping endpoint =====
-app.get('/ping', (req, res) => {
+    // Pretty print JSON response
     res.setHeader('Content-Type', 'application/json');
-    res.status(200).json(getHealthData());
-});
-
-// ===== /health endpoint (alias) =====
-app.get('/health', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.status(200).json(getHealthData());
+    res.status(200).json(response);
 });
 
 // ----- HOME ROUTE -----
@@ -1112,7 +1105,7 @@ function startServer() {
         console.log(`💾 Cache entries: ${cache.size}`);
         console.log('============================================');
         console.log('📖 Available routes:');
-        console.log('   GET  /ping           - Health check');
+        console.log('   GET  /ping or /health         - Health check');
         console.log('   GET  /api/home       - Homepage videos');
         console.log('   GET  /api/search     - Search videos');
         console.log('   GET  /api/video/:id  - Video details');
