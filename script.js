@@ -172,55 +172,10 @@ async function loadVideos() {
             genre: state.currentGenre
         });
         
-        // Use a mock response for now since backend isn't ready
-        // This will be replaced with actual API call
-        const mockData = {
-            videos: [
-                {
-                    id: '1',
-                    title: 'Goku vs Android 21 (DB) AI',
-                    uploader: 'Dairy Land',
-                    duration: '11min',
-                    quality: '1080p',
-                    views: '108.4k',
-                    thumbnail: 'https://via.placeholder.com/320x180?text=Anime+1'
-                },
-                {
-                    id: '2',
-                    title: 'Soaking My Stepsister Tight Shirt',
-                    uploader: 'Panty Land',
-                    duration: '20min',
-                    quality: '1080p',
-                    views: '200.7k',
-                    thumbnail: 'https://via.placeholder.com/320x180?text=Anime+2'
-                },
-                {
-                    id: '3',
-                    title: 'Busty Babe Rides His Cock',
-                    uploader: 'Wrecked',
-                    duration: '11min',
-                    quality: '1080p',
-                    views: '83.2k',
-                    thumbnail: 'https://via.placeholder.com/320x180?text=Anime+3'
-                }
-            ],
-            total: 3,
-            hasMore: false
-        };
-        
-        // Comment this out when backend is ready
-       // ❌ DON'T DO THIS
-      // const data = mockData;
-
-      // ✅ DO THIS INSTEAD
-const response = await fetch(`${API_BASE}/api/home?${params}`);
-if (!response.ok) throw new Error('Failed to load videos');
-const data = await response.json();
-        
-        // Real API call (uncomment when backend is ready)
-        // const response = await fetch(`${API_BASE}/api/home?${params}`);
-        // if (!response.ok) throw new Error('Failed to load videos');
-        // const data = await response.json();
+        // ✅ CORRECT: Homepage API call
+        const response = await fetch(`${API_BASE}/api/home?${params}`);
+        if (!response.ok) throw new Error('Failed to load videos');
+        const data = await response.json();
         
         if (!data.videos || data.videos.length === 0) {
             state.hasMore = false;
