@@ -857,16 +857,41 @@
                     </div>
                 </div>
 
-                <!-- ===== GENRE FILTERS ===== -->
-                <div class="genre-filters" id="genreFilters">
-                    <button class="filter-btn active" data-genre="all">🔥 All</button>
-                    <button class="filter-btn" data-genre="popular">⭐ Popular</button>
-                    <button class="filter-btn" data-genre="recent">🆕 Recent</button>
-                    <button class="filter-btn" data-genre="hd">🎥 HD</button>
-                    <button class="filter-btn" data-genre="action">⚡ Action</button>
-                </div>
-            </div>
-        </section>
+                // Genre Filters - FIXED (Option 1: Search by genre term)
+if (DOM.genreFilters) {
+    const filterBtns = DOM.genreFilters.querySelectorAll('.filter-btn');
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            filterBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            const genre = btn.dataset.genre;
+            
+            // If "All" is clicked, load homepage (no search)
+            if (genre === 'all') {
+                state.searchQuery = '';
+                state.currentPage = 1;
+                state.hasMore = true;
+                state.videos = [];
+                if (DOM.results) DOM.results.innerHTML = '';
+                if (DOM.endResults) DOM.endResults.style.display = 'none';
+                loadVideos();
+            } else {
+                // For other genres, search for that term
+                // Popular → search "popular", HD → search "hd", etc.
+                state.searchQuery = genre;
+                state.currentPage = 1;
+                state.hasMore = true;
+                state.videos = [];
+                if (DOM.results) DOM.results.innerHTML = '';
+                if (DOM.endResults) DOM.endResults.style.display = 'none';
+                
+                showToast(`🔍 Searching for "${genre}" videos...`, 'info');
+                loadVideos();
+            }
+        });
+    });
+}
 
         <!-- ===== RESULTS ===== -->
         <div class="content-area">
@@ -1059,67 +1084,84 @@
     }
 
     // ============== EVENT LISTENERS ==============
-    function setupEventListeners() {
-        // Search
-        if (DOM.searchBtn) {
-            DOM.searchBtn.addEventListener('click', performSearch);
-        }
-        if (DOM.searchInput) {
-            DOM.searchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') performSearch();
+function setupEventListeners() {
+    // Search
+    if (DOM.searchBtn) {
+        DOM.searchBtn.addEventListener('click', performSearch);
+    }
+    if (DOM.searchInput) {
+        DOM.searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+    }
+
+    // Theme Toggle
+    if (DOM.themeToggle) {
+        DOM.themeToggle.addEventListener('click', toggleTheme);
+    }
+
+    // Menu Toggle
+    if (DOM.menuToggle && DOM.navLinks) {
+        DOM.menuToggle.addEventListener('click', () => {
+            DOM.navLinks.classList.toggle('active');
+        });
+
+        DOM.navLinks.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                DOM.navLinks.classList.remove('active');
             });
-        }
+        });
+    }
 
-        // Theme Toggle
-        if (DOM.themeToggle) {
-            DOM.themeToggle.addEventListener('click', toggleTheme);
-        }
-
-        // Menu Toggle
-        if (DOM.menuToggle && DOM.navLinks) {
-            DOM.menuToggle.addEventListener('click', () => {
-                DOM.navLinks.classList.toggle('active');
-            });
-
-            DOM.navLinks.querySelectorAll('a').forEach(link => {
-                link.addEventListener('click', () => {
-                    DOM.navLinks.classList.remove('active');
-                });
-            });
-        }
-
-        // Genre Filters
-        if (DOM.genreFilters) {
-            const filterBtns = DOM.genreFilters.querySelectorAll('.filter-btn');
-            filterBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    filterBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    state.currentGenre = btn.dataset.genre;
+    // Genre Filters - FIXED (Option 1)
+    if (DOM.genreFilters) {
+        const filterBtns = DOM.genreFilters.querySelectorAll('.filter-btn');
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                const genre = btn.dataset.genre;
+                
+                // If "All" is clicked, load homepage (no search)
+                if (genre === 'all') {
+                    state.searchQuery = '';
                     state.currentPage = 1;
                     state.hasMore = true;
                     state.videos = [];
                     if (DOM.results) DOM.results.innerHTML = '';
                     if (DOM.endResults) DOM.endResults.style.display = 'none';
                     loadVideos();
-                });
-            });
-        }
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-                e.preventDefault();
-                if (DOM.searchInput) DOM.searchInput.focus();
-            }
-            if (e.key === 'Escape' && document.activeElement === DOM.searchInput) {
-                if (DOM.searchInput) {
-                    DOM.searchInput.value = '';
-                    DOM.searchInput.blur();
+                } else {
+                    // For other genres, search for that term
+                    state.searchQuery = genre;
+                    state.currentPage = 1;
+                    state.hasMore = true;
+                    state.videos = [];
+                    if (DOM.results) DOM.results.innerHTML = '';
+                    if (DOM.endResults) DOM.endResults.style.display = 'none';
+                    
+                    showToast(`🔍 Searching for "${genre}" videos...`, 'info');
+                    loadVideos();
                 }
-            }
+            });
         });
     }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            if (DOM.searchInput) DOM.searchInput.focus();
+        }
+        if (e.key === 'Escape' && document.activeElement === DOM.searchInput) {
+            if (DOM.searchInput) {
+                DOM.searchInput.value = '';
+                DOM.searchInput.blur();
+            }
+        }
+    });
+}
 
     // ============== SCROLL ==============
     function setupScroll() {
