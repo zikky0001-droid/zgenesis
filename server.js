@@ -23,6 +23,7 @@ const PORT = process.env.PORT || 10000;
 // ============================================
 // 2. ⚙️ GLOBAL CONFIGURATION & CONSTANTS
 // ============================================
+
 // ----- URL CONSTANTS -----
 const URLS = {
     BASE: 'https://amp.xnxx.com/',
