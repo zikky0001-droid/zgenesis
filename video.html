@@ -1128,7 +1128,7 @@ function displayVideo(video) {
     
     // Duration
     if (el.duration) {
-        el.duration.textContent = video.duration || 'N/A';
+        el.duration.textContent = video.duration || '00:00';
         el.duration.className = 'meta-duration';
     }
     
@@ -1140,12 +1140,12 @@ function displayVideo(video) {
     
     // Quality
     if (el.quality) {
-        el.quality.textContent = video.quality || 'N/A';
+        el.quality.textContent = video.quality || '1080p';
         el.quality.className = 'meta-quality';
     }
     
     // Rating
-    if (el.rating) el.rating.textContent = `⭐ ${video.rating || 'N/A'}`;
+    if (el.rating) el.rating.textContent = `⭐ ${video.rating || '100%'}`;
     
     // Likes/Dislikes
     if (el.likes) el.likes.textContent = video.likes || '0';
@@ -1250,13 +1250,13 @@ function renderRelatedVideos(relatedVideos) {
                          alt="${video.title}" 
                          loading="lazy"
                          onerror="this.src='https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'">
-                    <span class="thumb-duration">${video.duration || 'N/A'}</span>
+                    <span class="thumb-duration">${video.duration || '00:00'}</span>
                 </div>
                 <div class="related-info">
                     <div class="related-title">${video.title || 'Untitled'}</div>
                     <div class="related-meta">
                         <span class="related-uploader">${video.uploader || 'Unknown'}</span>
-                        <span class="related-rating">⭐ ${video.rating || 'N/A'}</span>
+                        <span class="related-rating">⭐ ${video.rating || '1080p'}</span>
                     </div>
                 </div>
             </a>
@@ -1369,6 +1369,5 @@ console.log('📚 Dev Zikky Tech');
     </script>
 </body>
 </html>
-
 
 
