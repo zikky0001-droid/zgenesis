@@ -108,13 +108,44 @@ function decodeHtmlEntities(text) {
     if (!text) return text;
     
     const entities = {
-        '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"',
-        '&#039;': "'", '&nbsp;': ' ', '&ntilde;': 'ñ', '&Ntilde;': 'Ñ',
-        '&aacute;': 'á', '&eacute;': 'é', '&iacute;': 'í', '&oacute;': 'ó',
-        '&uacute;': 'ú', '&Aacute;': 'Á', '&Eacute;': 'É', '&Iacute;': 'Í',
-        '&Oacute;': 'Ó', '&Uacute;': 'Ú', '&agrave;': 'à', '&egrave;': 'è',
-        '&igrave;': 'ì', '&ograve;': 'ò', '&ugrave;': 'ù', '&ccedil;': 'ç',
-        '&Ccedil;': 'Ç', '&szlig;': 'ß'
+        '&amp;': '&',
+        '&lt;': '<',
+        '&gt;': '>',
+        '&quot;': '"',
+        '&#039;': "'",
+        '&nbsp;': ' ',
+        '&colon;': ':',   
+        '&period;': '.',  
+        '&comma;': ',',   
+        '&semi;': ';', 
+        '&excl;': '!',   
+        '&quest;': '?', 
+        '&ndash;': '–',
+        '&mdash;': '—',
+        '&lsquo;': "'",
+        '&rsquo;': "'",
+        '&ldquo;': '"',
+        '&rdquo;': '"',
+        '&ntilde;': 'ñ',
+        '&Ntilde;': 'Ñ',
+        '&aacute;': 'á',
+        '&eacute;': 'é',
+        '&iacute;': 'í',
+        '&oacute;': 'ó',
+        '&uacute;': 'ú',
+        '&Aacute;': 'Á',
+        '&Eacute;': 'É',
+        '&Iacute;': 'Í',
+        '&Oacute;': 'Ó',
+        '&Uacute;': 'Ú',
+        '&agrave;': 'à',
+        '&egrave;': 'è',
+        '&igrave;': 'ì',
+        '&ograve;': 'ò',
+        '&ugrave;': 'ù',
+        '&ccedil;': 'ç',
+        '&Ccedil;': 'Ç',
+        '&szlig;': 'ß'
     };
     
     return text.replace(/&[a-zA-Z]+;/g, (match) => {
@@ -500,85 +531,97 @@ function scrapeVideoDetails(html) {
         }
     }
     
-    // Extract rating, likes, dislikes
-    const ratingMatch = html.match(/<span class="rating-box value">([^<]+)<\/span>/);
-    if (ratingMatch) {
-        details.rating = ratingMatch[1].trim();
-    }
-    
-    const likesMatch = html.match(/<a class="vote-action-good[^>]*>.*?<span class="value">([^<]+)<\/span>/s);
-    if (likesMatch) {
-        details.likes = likesMatch[1].trim();
-    }
-    
-    const dislikesMatch = html.match(/<a class="vote-action-bad[^>]*>.*?<span class="value">([^<]+)<\/span>/s);
-    if (dislikesMatch) {
-        details.dislikes = dislikesMatch[1].trim();
-    }
-    
-    // Extract from JSON-LD
-    const jsonLdMatch = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/s);
-    if (jsonLdMatch) {
-        try {
-            const jsonData = JSON.parse(jsonLdMatch[1]);
-            
-            if (jsonData.interactionStatistic) {
-                details.views = jsonData.interactionStatistic.userInteractionCount?.toLocaleString() || 'N/A';
-            }
-            
-            if (jsonData.thumbnailUrl && jsonData.thumbnailUrl.length > 0) {
-                details.thumbnail = jsonData.thumbnailUrl[0];
-            }
-            
-            if (jsonData.duration) {
-                const durMatch = jsonData.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-                if (durMatch) {
-                    let hours = durMatch[1] ? `${durMatch[1]} hour${durMatch[1] > 1 ? 's' : ''}` : '';
-                    let mins = durMatch[2] ? `${durMatch[2]} minute${durMatch[2] > 1 ? 's' : ''}` : '';
-                    let secs = durMatch[3] ? `${durMatch[3]} second${durMatch[3] > 1 ? 's' : ''}` : '';
-                    
-                    let formatted = '';
-                    if (hours) formatted += hours;
-                    if (mins) {
-                        if (formatted) formatted += ', ';
-                        formatted += mins;
-                    }
-                    if (secs) {
-                        if (formatted) formatted += ', ';
-                        formatted += secs;
-                    }
-                    
-                    if (formatted) details.duration = formatted;
-                }
-            }
-            
-            // Extract video URL & download URL
-            if (jsonData.contentUrl) {
-                details.videoUrl = jsonData.contentUrl;
-                
-                if (jsonData.contentUrl.includes('&download=')) {
-                    details.downloadUrl = jsonData.contentUrl;
-                } else {
-                    const baseMatch = jsonData.contentUrl.match(/(.*?)(\?secure=.*?)(?:&|$)/);
-                    if (baseMatch) {
-                        const base = baseMatch[1];
-                        const securePart = baseMatch[2];
-                        const filename = details.title
-                            .toLowerCase()
-                            .replace(/[^a-z0-9]/g, '_')
-                            .replace(/_+/g, '_')
-                            .trim();
-                        details.downloadUrl = `${base}${securePart}&download=xnxx_${filename}_SD.mp4`;
-                    }
-                }
-            }
-        } catch (e) {
-            console.error('JSON-LD parse error:', e.message);
+   // Extract rating, likes, dislikes
+const ratingMatch = html.match(/<span class="rating-box value">([^<]+)<\/span>/);
+if (ratingMatch) {
+    details.rating = ratingMatch[1].trim();
+}
+
+const likesMatch = html.match(/<a class="vote-action-good[^>]*>.*?<span class="value">([^<]+)<\/span>/s);
+if (likesMatch) {
+    details.likes = likesMatch[1].trim();
+}
+
+const dislikesMatch = html.match(/<a class="vote-action-bad[^>]*>.*?<span class="value">([^<]+)<\/span>/s);
+if (dislikesMatch) {
+    details.dislikes = dislikesMatch[1].trim();
+}
+
+// Extract from JSON-LD
+const jsonLdMatch = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/s);
+if (jsonLdMatch) {
+    try {
+        const jsonData = JSON.parse(jsonLdMatch[1]);
+        
+        if (jsonData.interactionStatistic) {
+            details.views = jsonData.interactionStatistic.userInteractionCount?.toLocaleString() || 'N/A';
         }
+        
+        if (jsonData.thumbnailUrl && jsonData.thumbnailUrl.length > 0) {
+            details.thumbnail = jsonData.thumbnailUrl[0];
+        }
+        
+        if (jsonData.duration) {
+            const durMatch = jsonData.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+            if (durMatch) {
+                let hours = durMatch[1] ? `${durMatch[1]} hour${durMatch[1] > 1 ? 's' : ''}` : '';
+                let mins = durMatch[2] ? `${durMatch[2]} minute${durMatch[2] > 1 ? 's' : ''}` : '';
+                let secs = durMatch[3] ? `${durMatch[3]} second${durMatch[3] > 1 ? 's' : ''}` : '';
+                
+                let formatted = '';
+                if (hours) formatted += hours;
+                if (mins) {
+                    if (formatted) formatted += ', ';
+                    formatted += mins;
+                }
+                if (secs) {
+                    if (formatted) formatted += ', ';
+                    formatted += secs;
+                }
+                
+                if (formatted) details.duration = formatted;
+            }
+        }
+        
+        // ✅ Extract video URL & download URL - FIXED
+        if (jsonData.contentUrl) {
+            // ✅ Ensure videoUrl is properly set
+            details.videoUrl = jsonData.contentUrl;
+            
+            // ✅ Check if it has download parameter
+            if (jsonData.contentUrl.includes('&download=')) {
+                details.downloadUrl = jsonData.contentUrl;
+            } else {
+                // ✅ Construct download URL
+                const baseMatch = jsonData.contentUrl.match(/(.*?)(\?secure=.*?)(?:&|$)/);
+                if (baseMatch) {
+                    const base = baseMatch[1];
+                    const securePart = baseMatch[2];
+                    const filename = details.title
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]/g, '_')
+                        .replace(/_+/g, '_')
+                        .trim();
+                    details.downloadUrl = `https://www.xnxx.com/${securePart}&download=xnxx_${filename}_SD.mp4`;
+                }
+            }
+        }
+        
+        // ✅ FALLBACK: If contentUrl is missing, try to find video URL in the page
+        if (!details.videoUrl || details.videoUrl === '#') {
+            const videoSrcMatch = html.match(/<video[^>]*src="([^"]+)"/);
+            if (videoSrcMatch) {
+                details.videoUrl = videoSrcMatch[1];
+            }
+        }
+        
+    } catch (e) {
+        console.error('JSON-LD parse error:', e.message);
     }
-    
-    // Format duration
-    details.duration = formatDuration(details.duration);
+}
+
+// Format duration
+details.duration = formatDuration(details.duration);
     
     // Extract tags
     const tagsMatch = html.match(/<div class="metadata-row video-tags">.*?<\/div>/s);
