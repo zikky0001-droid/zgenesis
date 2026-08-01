@@ -26,16 +26,16 @@ const PORT = process.env.PORT || 10000;
 
 // ----- URL CONSTANTS -----
 const URLS = {
-    BASE: 'https://amp.xnxx.com/',
-    SEARCH: 'https://amp.xnxx.com/search/',
-    VIDEO: 'https://www.xnxx.com/video-',
+    BASE: 'https://amp.thnxx.com/',
+    SEARCH: 'https://amp.thnxx.com/search/',
+    VIDEO: 'https://www.thnxx.com/video-',
     API: 'https://zgenesis.onrender.com'
 };
 
 // ----- SUPPORTED DOMAINS -----
 const SUPPORTED_DOMAINS = [
-    'amp.xnxx.com',
-    'xnxx.com', 
+    'amp.thnxx.com',
+    'thnxx.com', 
     'xnhh.com',
     'thnxx.com'
 ];
@@ -259,8 +259,8 @@ function cleanUrlForScraping(url) {
         // Remove trailing slash
         cleanUrl = cleanUrl.replace(/\/$/, '');
         
-        // Convert txnhh.com to xnxx.com
-        cleanUrl = cleanUrl.replace(/txnhh\.com/g, 'xnxx.com');
+        // Convert txnhh.com to thnxx.com
+        cleanUrl = cleanUrl.replace(/txnhh\.com/g, 'thnxx.com');
         
         // Ensure HTTPS
         cleanUrl = cleanUrl.replace(/^http:/, 'https:');
@@ -567,7 +567,7 @@ function scrapeVideoDetails(html) {
                             .replace(/[^a-z0-9]/g, '_')
                             .replace(/_+/g, '_')
                             .trim();
-                        details.downloadUrl = `${base}${securePart}&download=xnxx_${filename}_SD.mp4`;
+                        details.downloadUrl = `${base}${securePart}&download=thnxx_${filename}_SD.mp4`;
                     }
                 }
             }
@@ -609,7 +609,7 @@ function scrapeVideoDetails(html) {
                         if (titleMatch) {
                             let fullUrl = urlMatch ? urlMatch[1] : '#';
                             if (fullUrl && !fullUrl.startsWith('http')) {
-                                fullUrl = `https://amp.xnxx.com${fullUrl}`;
+                                fullUrl = `https://amp.thnxx.com${fullUrl}`;
                             }
                             
                             details.relatedVideos.push({
@@ -967,34 +967,7 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-// ----- VIDEO DETAILS ROUTE -----
-
-app.get('/api/video/:id', async (req, res) => {
-    try {
-        const videoId = req.params.id;
-        
-        if (!videoId) {
-            return res.status(400).json({ error: 'Video ID required' });
-        }
-        
-        const cacheKey = getCacheKey('video', { id: videoId });
-        const cached = getCached(cacheKey);
-        
-        if (cached) {
-            return res.json(cached);
-        }
-        
-        const data = await scrapeVideo(videoId);
-        setCached(cacheKey, data);
-        res.json(data);
-        
-    } catch (error) {
-        console.error('❌ Video API error:', error.message);
-        res.status(500).json({ error: 'Failed to load video' });
-    }
-});
-
-// ===== VIDEO BY URL ROUTE (NEW) =====
+// ===== VIDEO BY URL ROUTE (MUST COME FIRST!) =====
 app.get('/api/video/by-url', async (req, res) => {
     try {
         let videoUrl = req.query.url;
@@ -1030,6 +1003,32 @@ app.get('/api/video/by-url', async (req, res) => {
         
     } catch (error) {
         console.error('❌ Video by URL error:', error.message);
+        res.status(500).json({ error: 'Failed to load video' });
+    }
+});
+
+// ----- VIDEO DETAILS ROUTE (FALLBACK - COMES AFTER) -----
+app.get('/api/video/:id', async (req, res) => {
+    try {
+        const videoId = req.params.id;
+        
+        if (!videoId) {
+            return res.status(400).json({ error: 'Video ID required' });
+        }
+        
+        const cacheKey = getCacheKey('video', { id: videoId });
+        const cached = getCached(cacheKey);
+        
+        if (cached) {
+            return res.json(cached);
+        }
+        
+        const data = await scrapeVideo(videoId);
+        setCached(cacheKey, data);
+        res.json(data);
+        
+    } catch (error) {
+        console.error('❌ Video API error:', error.message);
         res.status(500).json({ error: 'Failed to load video' });
     }
 });
