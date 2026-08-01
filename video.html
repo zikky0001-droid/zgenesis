@@ -1017,7 +1017,7 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
-        // ============================================
+// ============================================
 // THE GENESIS - VIDEO PAGE LOGIC
 // By Dev Zikky Tech
 // ============================================
@@ -1064,28 +1064,41 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============== SETUP VIDEO PAGE ==============
 function setupVideoPage() {
     const params = new URLSearchParams(window.location.search);
+    const videoUrl = params.get('url');
     const videoId = params.get('id');
     
-    if (videoId) {
+    if (videoUrl) {
+        // ✅ We have the full URL - use it directly
+        loadVideoByUrl(videoUrl);
+    } else if (videoId) {
+        // Fallback for backwards compatibility
         loadVideoDetails(videoId);
     } else {
         showError('No video selected', 'Please go back to the gallery and select a video.');
     }
 }
 
-// ============== SHOW ERROR ==============
-function showError(title, message) {
-    if (el.errorState) {
-        el.errorState.classList.add('show');
-        el.errorState.querySelector('h2').textContent = title || 'Video Not Found';
-        el.errorState.querySelector('p').textContent = message || 'The video you\'re looking for doesn\'t exist.';
+// ============== LOAD VIDEO BY URL ==============
+async function loadVideoByUrl(videoUrl) {
+    try {
+        showToast('Loading video...', 'info');
+        
+        // Send the full URL to the server
+        const response = await fetch(`${API_BASE}/api/video/by-url?url=${encodeURIComponent(videoUrl)}`);
+        if (!response.ok) throw new Error('Failed to load video');
+        const video = await response.json();
+        
+        currentVideo = video;
+        displayVideo(video);
+        
+    } catch (error) {
+        console.error('Error loading video:', error);
+        showToast('Failed to load video', 'error');
+        showError('Failed to load video', error.message || 'Please try again later.');
     }
-    if (el.playerWrapper) el.playerWrapper.style.display = 'none';
-    if (el.videoInfoSection) el.videoInfoSection.style.display = 'none';
-    showToast(title || 'Error loading video', 'error');
 }
 
-// ============== LOAD VIDEO DETAILS ==============
+// ============== LOAD VIDEO DETAILS (FALLBACK) ==============
 async function loadVideoDetails(videoId) {
     try {
         showToast('Loading video...', 'info');
@@ -1096,7 +1109,7 @@ async function loadVideoDetails(videoId) {
         const video = await response.json();
         
         currentVideo = video;
-        displayVideo(video);  // ✅ Call displayVideo with the video data
+        displayVideo(video);
         
     } catch (error) {
         console.error('Error loading video:', error);
@@ -1220,10 +1233,15 @@ function renderRelatedVideos(relatedVideos) {
         const card = document.createElement('div');
         card.className = 'related-card';
         
-        const videoId = video.id || video.url?.split('/').pop() || 'unknown';
+        // Extract video ID from URL
+        let videoId = video.id;
+        if (!videoId && video.url) {
+            const match = video.url.match(/video-([a-zA-Z0-9]+)/);
+            videoId = match ? match[1] : 'unknown';
+        }
         
         card.innerHTML = `
-            <a href="video.html?id=${encodeURIComponent(videoId)}">
+            <a href="video.html?url=${encodeURIComponent(video.url || videoId)}">
                 <div class="related-thumb">
                     <img src="${video.thumbnail || 'https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'}" 
                          alt="${video.title}" 
@@ -1344,6 +1362,7 @@ function showToast(message, type = 'info') {
 
 console.log('🎬 Video Player loaded successfully!');
 console.log('📚 Dev Zikky Tech');
+
     </script>
 </body>
 </html>

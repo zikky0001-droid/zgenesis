@@ -1006,41 +1006,44 @@ async function loadVideos() {
 }
 
     // ============== RENDER VIDEOS ==============
-    function renderVideos(videos) {
-        if (!DOM.results) return;
+function renderVideos(videos) {
+    if (!DOM.results) return;
 
-        DOM.results.innerHTML = '';
+    DOM.results.innerHTML = '';
 
-        videos.forEach(video => {
-            const card = document.createElement('div');
-            card.className = 'video-card';
-            card.dataset.videoId = video.id;
+    videos.forEach(video => {
+        const card = document.createElement('div');
+        card.className = 'video-card';
+        card.dataset.videoId = video.id;
 
-            card.innerHTML = `
-                <div class="thumbnail-wrapper">
-                    <img src="${video.thumbnail || 'https://via.placeholder.com/320x180?text=No+Thumbnail'}" 
-                         alt="${video.title}" 
-                         loading="lazy"
-                         onerror="this.src='https://via.placeholder.com/320x180?text=No+Thumbnail'">
-                    <span class="duration-badge">${video.duration || 'N/A'}</span>
-                    ${video.quality && video.quality !== 'N/A' ? `<span class="quality-badge">${video.quality}</span>` : ''}
+        card.innerHTML = `
+            <div class="thumbnail-wrapper">
+                <img src="${video.thumbnail || 'https://via.placeholder.com/320x180?text=No+Thumbnail'}" 
+                     alt="${video.title}" 
+                     loading="lazy"
+                     onerror="this.src='https://via.placeholder.com/320x180?text=No+Thumbnail'">
+                <span class="duration-badge">${video.duration || 'N/A'}</span>
+                ${video.quality && video.quality !== 'N/A' ? `<span class="quality-badge">${video.quality}</span>` : ''}
+            </div>
+            <div class="video-info">
+                <div class="video-title">${video.title || 'Untitled'}</div>
+                <div class="video-meta">
+                    ${video.uploader ? `<span class="uploader-name"><i class="fas fa-user"></i> ${video.uploader}</span>` : ''}
+                    <span class="views-count"><i class="fas fa-eye"></i> ${video.views || 0}</span>
                 </div>
-                <div class="video-info">
-                    <div class="video-title">${video.title || 'Untitled'}</div>
-                    <div class="video-meta">
-                        ${video.uploader ? `<span class="uploader-name"><i class="fas fa-user"></i> ${video.uploader}</span>` : ''}
-                        <span class="views-count"><i class="fas fa-eye"></i> ${video.views || 0}</span>
-                    </div>
-                </div>
-            `;
+            </div>
+        `;
 
-            card.addEventListener('click', () => {
-                window.location.href = `video.html?id=${encodeURIComponent(video.id)}`;
-            });
-
-            DOM.results.appendChild(card);
+        // ✅ Pass the FULL URL (with title slug) to video.html
+        card.addEventListener('click', () => {
+            // Use video.url if available (full URL with slug), otherwise fallback to video.id
+            const urlParam = video.url ? encodeURIComponent(video.url) : video.id;
+            window.location.href = `video.html?url=${urlParam}`;
         });
-    }
+
+        DOM.results.appendChild(card);
+    });
+}
 
     // ============== UPDATE RESULTS COUNT ==============
     function updateResultsCount(count) {

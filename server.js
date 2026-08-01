@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 10000;
 const URLS = {
     BASE: 'https://amp.xnxx.com/',
     SEARCH: 'https://amp.xnxx.com/search/',
-    VIDEO: 'https://xnxx.com/',
+    VIDEO: 'https://www.xnxx.com/video-',
     API: 'https://zgenesis.onrender.com'
 };
 
@@ -37,7 +37,7 @@ const SUPPORTED_DOMAINS = [
     'amp.xnxx.com',
     'xnxx.com', 
     'xnhh.com',
-    'thxx.com'
+    'thnxx.com'
 ];
 
 // ----- CACHE CONSTANTS -----
@@ -345,12 +345,12 @@ function scrapeVideos(html, sourceUrl) {
         
         if (!videoBlock || videoBlock.trim().length < 50) continue;
         
-        // Extract video URL
-        let videoUrl = null;
-        const urlMatch = videoBlock.match(/<div class="video-thumb">\s*<a\s+href="([^"]+)"[^>]*>/);
-        if (urlMatch) {
-            videoUrl = urlMatch[1];
-        }
+        // Extract video URL - this already gets the FULL URL from the page
+let videoUrl = null;
+const urlMatch = videoBlock.match(/<div class="video-thumb">\s*<a\s+href="([^"]+)"[^>]*>/);
+if (urlMatch) {
+    videoUrl = urlMatch[1]; 
+}
         
         // Extract thumbnail
         let thumbnail = null;
@@ -398,31 +398,31 @@ function scrapeVideos(html, sourceUrl) {
         }
         
         // Extract views
-        let views = 'N/A';
-        const viewsMatch = videoBlock.match(/<div class="views">([^<]+)<\/div>/);
-        if (viewsMatch) {
-            views = viewsMatch[1].trim();
-        }
-        
-        // Clean URL
-        if (videoUrl) {
-            videoUrl = cleanVideoUrl(videoUrl, title);
-        }
-        
-        // Only add if we have a title
-        if (title && title !== 'Untitled') {
-            videos.push({
-                id: getVideoIdFromUrl(videoUrl) || `video_${index}`,
-                url: videoUrl || '#',
-                thumbnail: thumbnail || '',
-                title: decodeText(title),
-                uploader: uploader || 'Unknown',
-                duration: length,
-                quality: quality,
-                views: views
-            });
-        }
-    }
+let views = 'N/A';
+const viewsMatch = videoBlock.match(/<div class="views">([^<]+)<\/div>/);
+if (viewsMatch) {
+    views = viewsMatch[1].trim();
+}
+
+// Clean URL
+if (videoUrl) {
+    videoUrl = cleanVideoUrl(videoUrl, title);
+}
+
+// ✅ Store the FULL URL (with title slug) - NOT just the ID
+if (title && title !== 'Untitled') {
+    videos.push({
+        id: getVideoIdFromUrl(videoUrl) || `video_${index}`,
+        url: videoUrl || '#',   // ✅ This is the FULL URL with slug
+        thumbnail: thumbnail || '',
+        title: decodeText(title),
+        uploader: uploader || 'Unknown',
+        duration: length,
+        quality: quality,
+        views: views
+    });
+}
+}
     
     return videos;
 }
@@ -964,6 +964,42 @@ app.get('/api/video/:id', async (req, res) => {
         
     } catch (error) {
         console.error('❌ Video API error:', error.message);
+        res.status(500).json({ error: 'Failed to load video' });
+    }
+});
+
+// ===== VIDEO BY URL ROUTE (NEW) =====
+app.get('/api/video/by-url', async (req, res) => {
+    try {
+        const videoUrl = req.query.url;
+        
+        if (!videoUrl) {
+            return res.status(400).json({ error: 'Video URL required' });
+        }
+        
+        // Check cache
+        const cacheKey = getCacheKey('video-by-url', { url: videoUrl });
+        const cached = getCached(cacheKey);
+        
+        if (cached) {
+            return res.json(cached);
+        }
+        
+        // Fetch and scrape the video page using the full URL
+        const html = await fetchPage(videoUrl);
+        const details = scrapeVideoDetails(html);
+        
+        // Extract video ID from URL
+        const match = videoUrl.match(/video-([a-zA-Z0-9]+)/);
+        details.id = match ? match[1] : 'unknown';
+        details.url = videoUrl;
+        
+        // Cache the result
+        setCached(cacheKey, details);
+        res.json(details);
+        
+    } catch (error) {
+        console.error('❌ Video by URL error:', error.message);
         res.status(500).json({ error: 'Failed to load video' });
     }
 });
