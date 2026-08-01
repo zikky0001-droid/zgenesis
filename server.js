@@ -740,6 +740,7 @@ if (relatedMatch) {
         console.error('Error parsing related videos:', e.message);
     }
 }
+}
 
 // ----- SCRAPE FUNCTIONS -----
 
