@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 10000;
 const URLS = {
     BASE: 'https://amp.xnxx.com/',
     SEARCH: 'https://amp.xnxx.com/search/',
-    VIDEO: 'https://amp.xnxx.com/video-',
+    VIDEO: 'https://xnxx.com/video-',
     API: 'https://zgenesis.onrender.com'
 };
 
