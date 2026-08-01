@@ -43,8 +43,8 @@ const SUPPORTED_DOMAINS = [
 
 // ----- CACHE CONSTANTS -----
 const CACHE = {
-    TTL: 15 * 60 * 1000,           // 15 minutes in milliseconds
-    CLEANUP_INTERVAL: 5 * 60 * 1000 // Clean expired every 5 minutes
+    TTL: 1 * 60 * 1000,           // 1 minute in milliseconds
+    CLEANUP_INTERVAL: 1 * 60 * 1000 // Clean expired every 1 minute
 };
 
 // ----- TIMEOUT CONSTANTS -----
@@ -138,7 +138,7 @@ function formatFileSize(bytes) {
 }
 
 function formatDuration(duration) {
-    if (!duration || duration === 'N/A') return 'N/A';
+    if (!duration || duration === 'N/A') return '00:00';
     
     // Remove "00h " if present
     let formatted = duration.replace(/^00h\s*/, '');
@@ -460,12 +460,12 @@ function scrapeVideoDetails(html) {
     const details = {
         title: 'Untitled',
         uploader: 'Unknown',
-        duration: 'N/A',
-        quality: 'N/A',
-        rating: 'N/A',
+        duration: '00:00',
+        quality: '1080p',
+        rating: '100%',
         likes: '0',
         dislikes: '0',
-        views: 'N/A',
+        views: 'None',
         tags: [],
         thumbnail: '',
         videoUrl: '#',
@@ -620,7 +620,7 @@ function scrapeVideoDetails(html) {
                                 duration: durationMatch ? durationMatch[1] : 'N/A',
                                 views: viewsMatch ? viewsMatch[1] : 'N/A',
                                 rating: ratingMatch ? ratingMatch[1] : 'N/A',
-                                uploader: uploaderMatch ? decodeText(uploaderMatch[1].trim()) : 'Unknown'
+                                uploader: uploaderMatch ? decodeText(uploaderMatch[1].trim()) : 'The Naughty Guy'
                             });
                         }
                     } catch (e) {
