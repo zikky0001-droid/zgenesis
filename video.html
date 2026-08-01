@@ -1227,36 +1227,50 @@ function renderRelatedVideos(relatedVideos) {
     const grid = el.relatedGrid;
     if (!grid) return;
     
+    // ✅ Clear existing content
     grid.innerHTML = '';
     
-    relatedVideos.forEach(video => {
+    // ✅ Deduplicate by URL
+    const seenUrls = new Set();
+    const uniqueVideos = relatedVideos.filter(video => {
+        const url = video.url || video.id;
+        if (seenUrls.has(url)) return false;
+        seenUrls.add(url);
+        return true;
+    });
+    
+    uniqueVideos.forEach(video => {
         const card = document.createElement('div');
         card.className = 'related-card';
         
-        // ✅ Extract video ID from URL properly
         let videoId = video.id;
         if (!videoId && video.url) {
             const match = video.url.match(/video-([a-zA-Z0-9]+)/);
             videoId = match ? match[1] : 'unknown';
         }
         
-        // ✅ Pass the full URL if available, otherwise use ID
         const urlParam = video.url ? encodeURIComponent(video.url) : videoId;
+        
+        // ✅ Ensure thumbnail URL is valid
+        let thumbnailUrl = video.thumbnail || 'https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail';
         
         card.innerHTML = `
             <a href="video.html?url=${urlParam}">
                 <div class="related-thumb">
-                    <img src="${video.thumbnail || 'https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'}" 
-                         alt="${video.title}" 
-                         loading="lazy"
-                         onerror="this.src='https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'">
-                    <span class="thumb-duration">${video.duration || '00:00'}</span>
+                    <img 
+                        src="${thumbnailUrl}" 
+                        alt="${video.title}" 
+                        loading="lazy"
+                        onerror="this.src='https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'"
+                    >
+                    <span class="thumb-duration">${video.duration || 'N/A'}</span>
                 </div>
                 <div class="related-info">
                     <div class="related-title">${video.title || 'Untitled'}</div>
                     <div class="related-meta">
                         <span class="related-uploader">${video.uploader || 'Unknown'}</span>
-                        <span class="related-rating">⭐ ${video.rating || '1080p'}</span>
+                        ${video.views ? `<span class="related-views"><i class="fas fa-eye"></i> ${video.views}</span>` : ''}
+                        <span class="related-rating">⭐ ${video.rating || 'N/A'}</span>
                     </div>
                 </div>
             </a>
@@ -1265,6 +1279,7 @@ function renderRelatedVideos(relatedVideos) {
         grid.appendChild(card);
     });
 }
+
 
 // ============== EVENT LISTENERS ==============
 function setupEventListeners() {

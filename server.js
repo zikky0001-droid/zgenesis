@@ -597,50 +597,109 @@ details.duration = formatDuration(details.duration);
         }
     }
     
-    // Extract related videos
-    const relatedMatch = html.match(/var video_related=\[(.*?)\];/s);
-    if (relatedMatch) {
-        try {
-            const videoObjects = relatedMatch[1].match(/\{[^}]*\}/g);
-            
-            if (videoObjects) {
-                for (const objStr of videoObjects) {
-                    try {
-                        const urlMatch = objStr.match(/"u":"([^"]+)"/);
-                        const thumbMatch = objStr.match(/"i":"([^"]+)"/);
-                        const titleMatch = objStr.match(/"t":"([^"]+)"/);
-                        const durationMatch = objStr.match(/"d":"([^"]+)"/);
-                        const viewsMatch = objStr.match(/"n":"([^"]+)"/);
-                        const ratingMatch = objStr.match(/"r":"([^"]+)"/);
-                        const uploaderMatch = objStr.match(/"p":"([^"]+)"/);
-                        
-                        if (titleMatch) {
-                            let fullUrl = urlMatch ? urlMatch[1] : '#';
-                            if (fullUrl && !fullUrl.startsWith('http')) {
-                                fullUrl = `https://amp.xnxx.com${fullUrl}`;
-                            }
-                            
-                            details.relatedVideos.push({
-                                url: fullUrl,
-                                thumbnail: thumbMatch ? thumbMatch[1] : '',
-                                title: decodeText(titleMatch[1].trim()),
-                                duration: durationMatch ? durationMatch[1] : 'N/A',
-                                views: viewsMatch ? viewsMatch[1] : 'N/A',
-                                rating: ratingMatch ? ratingMatch[1] : 'N/A',
-                                uploader: uploaderMatch ? decodeText(uploaderMatch[1].trim()) : 'The Naughty Guy'
-                            });
-                        }
-                    } catch (e) {
-                        console.error('Error parsing related video:', e.message);
+    // Extract related videos - WITH PROPER THUMBNAIL EXTRACTION
+const relatedMatch = html.match(/var video_related=\[(.*?)\];/s);
+if (relatedMatch) {
+    try {
+        const videoObjects = relatedMatch[1].match(/\{[^}]*\}/g);
+        const seenIds = new Set(); // ✅ Deduplicate
+        
+        if (videoObjects) {
+            for (const objStr of videoObjects) {
+                try {
+                    const urlMatch = objStr.match(/"u":"([^"]+)"/);
+                    const titleMatch = objStr.match(/"t":"([^"]+)"/);
+                    const durationMatch = objStr.match(/"d":"([^"]+)"/);
+                    const viewsMatch = objStr.match(/"n":"([^"]+)"/);
+                    const ratingMatch = objStr.match(/"r":"([^"]+)"/);
+                    const uploaderMatch = objStr.match(/"p":"([^"]+)"/);
+                    
+                    // ✅ FIX: Extract thumbnail from MULTIPLE sources
+                    let thumbnail = '';
+                    
+                    // Try 'i' (main thumbnail)
+                    const thumbMatch = objStr.match(/"i":"([^"]+)"/);
+                    if (thumbMatch) {
+                        thumbnail = thumbMatch[1];
                     }
+                    
+                    // If 'i' is missing or looks like a placeholder, try 'il' (listing thumbnail)
+                    if (!thumbnail || thumbnail.includes('undefined') || thumbnail.includes('null')) {
+                        const thumbListingMatch = objStr.match(/"il":"([^"]+)"/);
+                        if (thumbListingMatch) {
+                            thumbnail = thumbListingMatch[1];
+                        }
+                    }
+                    
+                    // If still missing, try 'if' (fallback)
+                    if (!thumbnail || thumbnail.includes('undefined') || thumbnail.includes('null')) {
+                        const thumbFallbackMatch = objStr.match(/"if":"([^"]+)"/);
+                        if (thumbFallbackMatch) {
+                            thumbnail = thumbFallbackMatch[1];
+                        }
+                    }
+                    
+                    // If still missing, try 'ip' (preview)
+                    if (!thumbnail || thumbnail.includes('undefined') || thumbnail.includes('null')) {
+                        const thumbPreviewMatch = objStr.match(/"ip":"([^"]+)"/);
+                        if (thumbPreviewMatch) {
+                            thumbnail = thumbPreviewMatch[1];
+                        }
+                    }
+                    
+                    // If still missing, try 'mu' (mobile)
+                    if (!thumbnail || thumbnail.includes('undefined') || thumbnail.includes('null')) {
+                        const thumbMobileMatch = objStr.match(/"mu":"([^"]+)"/);
+                        if (thumbMobileMatch) {
+                            thumbnail = thumbMobileMatch[1];
+                        }
+                    }
+                    
+                    // ✅ Clean up the thumbnail URL
+                    if (thumbnail) {
+                        // Remove backslashes
+                        thumbnail = thumbnail.replace(/\\/g, '');
+                        // Ensure it's a full URL
+                        if (!thumbnail.startsWith('http')) {
+                            // If it starts with //, add https:
+                            if (thumbnail.startsWith('//')) {
+                                thumbnail = `https:${thumbnail}`;
+                            } else {
+                                // If it's a relative path, add domain
+                                thumbnail = `https://amp.xnxx.com${thumbnail}`;
+                            }
+                        }
+                    }
+                    
+                    if (titleMatch) {
+                        // ✅ Deduplicate
+                        const videoId = urlMatch ? urlMatch[1].split('/').pop() : '';
+                        if (seenIds.has(videoId)) continue;
+                        seenIds.add(videoId);
+                        
+                        let fullUrl = urlMatch ? urlMatch[1] : '#';
+                        if (fullUrl && !fullUrl.startsWith('http')) {
+                            fullUrl = `https://amp.xnxx.com${fullUrl}`;
+                        }
+                        
+                        details.relatedVideos.push({
+                            url: fullUrl,
+                            thumbnail: thumbnail || '',
+                            title: decodeText(titleMatch[1].trim()),
+                          duration: durationMatch ? durationMatch[1] : '00:00',
+                            views: viewsMatch ? viewsMatch[1] : '208',
+                            rating: ratingMatch ? ratingMatch[1] : '100%',
+                            uploader: uploaderMatch ? decodeText(uploaderMatch[1].trim()) : 'The Naughty'
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error parsing related video:', e.message);
                 }
             }
-        } catch (e) {
-            console.error('Error parsing related videos:', e.message);
         }
+    } catch (e) {
+        console.error('Error parsing related videos:', e.message);
     }
-    
-    return details;
 }
 
 // ----- SCRAPE FUNCTIONS -----
