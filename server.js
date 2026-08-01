@@ -37,7 +37,7 @@ const SUPPORTED_DOMAINS = [
     'amp.xnxx.com',
     'xnxx.com', 
     'xnhh.com',
-    'thnxx.com'
+    'thnxx.com',
     'txnhh.com'
 ];
 
