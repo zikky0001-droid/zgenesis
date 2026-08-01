@@ -245,6 +245,32 @@ function cleanVideoUrl(url, title) {
     }
 }
 
+// ===== NEW: CLEAN URL FOR SCRAPING =====
+function cleanUrlForScraping(url) {
+    if (!url) return url;
+    
+    try {
+        // Remove query parameters
+        let cleanUrl = url.split('?')[0];
+        
+        // Remove fragments
+        cleanUrl = cleanUrl.split('#')[0];
+        
+        // Remove trailing slash
+        cleanUrl = cleanUrl.replace(/\/$/, '');
+        
+        // Convert txnhh.com to xnxx.com
+        cleanUrl = cleanUrl.replace(/txnhh\.com/g, 'xnxx.com');
+        
+        // Ensure HTTPS
+        cleanUrl = cleanUrl.replace(/^http:/, 'https:');
+        
+        return cleanUrl;
+    } catch (e) {
+        return url;
+    }
+}
+
 // ============================================
 // 4. 💾 CACHE MANAGEMENT
 // ============================================
@@ -971,11 +997,15 @@ app.get('/api/video/:id', async (req, res) => {
 // ===== VIDEO BY URL ROUTE (NEW) =====
 app.get('/api/video/by-url', async (req, res) => {
     try {
-        const videoUrl = req.query.url;
+        let videoUrl = req.query.url;
         
         if (!videoUrl) {
             return res.status(400).json({ error: 'Video URL required' });
         }
+        
+        // 🧹 CLEAN THE URL FOR SCRAPING
+        videoUrl = cleanUrlForScraping(videoUrl);
+        console.log('🧹 Cleaned URL for scraping:', videoUrl);
         
         // Check cache
         const cacheKey = getCacheKey('video-by-url', { url: videoUrl });
@@ -985,7 +1015,7 @@ app.get('/api/video/by-url', async (req, res) => {
             return res.json(cached);
         }
         
-        // Fetch and scrape the video page using the full URL
+        // Fetch and scrape the video page using the cleaned URL
         const html = await fetchPage(videoUrl);
         const details = scrapeVideoDetails(html);
         
