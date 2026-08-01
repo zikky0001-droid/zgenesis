@@ -551,36 +551,75 @@ if (dislikesMatch) {
 }
 
 // Extract from JSON-LD
-if (jsonData.contentUrl) {
-    // ✅ Store the video URL as-is (for streaming)
-    details.videoUrl = jsonData.contentUrl;
-    
-    // ✅ Check if it has download parameter
-    if (jsonData.contentUrl.includes('&download=')) {
-        // ✅ If it already has download, use it directly
-        details.downloadUrl = jsonData.contentUrl;
-    } else {
-        // ✅ Construct download URL from contentUrl
-        // The contentUrl looks like:
-        // https://mp4-cdn77.cnxx-cdn.com/.../mp4_sd.mp4?secure=...,1785588521
-        // Add &download= parameter at the end
-        const filename = details.title
-            .toLowerCase()
-            .replace(/[^a-z0-9]/g, '_')
-            .replace(/_+/g, '_')
-            .trim();
+const jsonLdMatch = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/s);
+if (jsonLdMatch) {
+    try {
+        const jsonData = JSON.parse(jsonLdMatch[1]);
         
-        // ✅ Properly construct download URL
-        // Find the base URL and secure part
-        const baseUrl = jsonData.contentUrl.split('?')[0];
-        const securePart = jsonData.contentUrl.split('?')[1];
-        
-        if (baseUrl && securePart) {
-            details.downloadUrl = `${baseUrl}?${securePart}&download=xnxx_${filename}_SD.mp4`;
-        } else {
-            // Fallback: just use contentUrl
-            details.downloadUrl = jsonData.contentUrl;
+        if (jsonData.interactionStatistic) {
+            details.views = jsonData.interactionStatistic.userInteractionCount?.toLocaleString() || 'N/A';
         }
+        
+        if (jsonData.thumbnailUrl && jsonData.thumbnailUrl.length > 0) {
+            details.thumbnail = jsonData.thumbnailUrl[0];
+        }
+        
+        if (jsonData.duration) {
+            const durMatch = jsonData.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+            if (durMatch) {
+                let hours = durMatch[1] ? `${durMatch[1]} hour${durMatch[1] > 1 ? 's' : ''}` : '';
+                let mins = durMatch[2] ? `${durMatch[2]} minute${durMatch[2] > 1 ? 's' : ''}` : '';
+                let secs = durMatch[3] ? `${durMatch[3]} second${durMatch[3] > 1 ? 's' : ''}` : '';
+                
+                let formatted = '';
+                if (hours) formatted += hours;
+                if (mins) {
+                    if (formatted) formatted += ', ';
+                    formatted += mins;
+                }
+                if (secs) {
+                    if (formatted) formatted += ', ';
+                    formatted += secs;
+                }
+                
+                if (formatted) details.duration = formatted;
+            }
+        }
+        
+        // ✅ Extract video URL & download URL - INSIDE try block
+        if (jsonData.contentUrl) {
+            details.videoUrl = jsonData.contentUrl;
+            
+            if (jsonData.contentUrl.includes('&download=')) {
+                details.downloadUrl = jsonData.contentUrl;
+            } else {
+                const filename = details.title
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]/g, '_')
+                    .replace(/_+/g, '_')
+                    .trim();
+                
+                const baseUrl = jsonData.contentUrl.split('?')[0];
+                const securePart = jsonData.contentUrl.split('?')[1];
+                
+                if (baseUrl && securePart) {
+                    details.downloadUrl = `${baseUrl}?${securePart}&download=xnxx_${filename}_SD.mp4`;
+                } else {
+                    details.downloadUrl = jsonData.contentUrl;
+                }
+            }
+        }
+        
+    } catch (e) {
+        console.error('JSON-LD parse error:', e.message);
+    }
+}
+
+// ✅ FALLBACK: If contentUrl is missing, try to find video URL in the page
+if (!details.videoUrl || details.videoUrl === '#') {
+    const videoSrcMatch = html.match(/<video[^>]*src="([^"]+)"/);
+    if (videoSrcMatch) {
+        details.videoUrl = videoSrcMatch[1];
     }
 }
 
