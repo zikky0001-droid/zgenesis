@@ -26,18 +26,19 @@ const PORT = process.env.PORT || 10000;
 
 // ----- URL CONSTANTS -----
 const URLS = {
-    BASE: 'https://amp.thnxx.com/',
-    SEARCH: 'https://amp.thnxx.com/search/',
-    VIDEO: 'https://www.thnxx.com/video-',
+    BASE: 'https://amp.xnxx.com/',
+    SEARCH: 'https://amp.xnxx.com/search/',
+    VIDEO: 'https://www.xnxx.com/video-',
     API: 'https://zgenesis.onrender.com'
 };
 
 // ----- SUPPORTED DOMAINS -----
 const SUPPORTED_DOMAINS = [
-    'amp.thnxx.com',
-    'thnxx.com', 
+    'amp.xnxx.com',
+    'xnxx.com', 
     'xnhh.com',
     'thnxx.com'
+    'txnhh.com'
 ];
 
 // ----- CACHE CONSTANTS -----
@@ -259,8 +260,8 @@ function cleanUrlForScraping(url) {
         // Remove trailing slash
         cleanUrl = cleanUrl.replace(/\/$/, '');
         
-        // Convert txnhh.com to thnxx.com
-        cleanUrl = cleanUrl.replace(/txnhh\.com/g, 'thnxx.com');
+        // Convert txnhh.com to xnxx.com
+        cleanUrl = cleanUrl.replace(/txnhh\.com/g, 'xnxx.com');
         
         // Ensure HTTPS
         cleanUrl = cleanUrl.replace(/^http:/, 'https:');
@@ -567,7 +568,7 @@ function scrapeVideoDetails(html) {
                             .replace(/[^a-z0-9]/g, '_')
                             .replace(/_+/g, '_')
                             .trim();
-                        details.downloadUrl = `${base}${securePart}&download=thnxx_${filename}_SD.mp4`;
+                        details.downloadUrl = `${base}${securePart}&download=xnxx_${filename}_SD.mp4`;
                     }
                 }
             }
@@ -609,7 +610,7 @@ function scrapeVideoDetails(html) {
                         if (titleMatch) {
                             let fullUrl = urlMatch ? urlMatch[1] : '#';
                             if (fullUrl && !fullUrl.startsWith('http')) {
-                                fullUrl = `https://amp.thnxx.com${fullUrl}`;
+                                fullUrl = `https://amp.xnxx.com${fullUrl}`;
                             }
                             
                             details.relatedVideos.push({
