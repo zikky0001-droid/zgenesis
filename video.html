@@ -1233,15 +1233,18 @@ function renderRelatedVideos(relatedVideos) {
         const card = document.createElement('div');
         card.className = 'related-card';
         
-        // Extract video ID from URL
+        // ✅ Extract video ID from URL properly
         let videoId = video.id;
         if (!videoId && video.url) {
             const match = video.url.match(/video-([a-zA-Z0-9]+)/);
             videoId = match ? match[1] : 'unknown';
         }
         
+        // ✅ Pass the full URL if available, otherwise use ID
+        const urlParam = video.url ? encodeURIComponent(video.url) : videoId;
+        
         card.innerHTML = `
-            <a href="video.html?url=${encodeURIComponent(video.url || videoId)}">
+            <a href="video.html?url=${urlParam}">
                 <div class="related-thumb">
                     <img src="${video.thumbnail || 'https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail'}" 
                          alt="${video.title}" 
