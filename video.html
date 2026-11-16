@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
     <title>Video Player - The Genesis</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -1085,7 +1086,7 @@ async function loadVideoByUrl(videoUrl) {
         
         // Send the full URL to the server
         const response = await fetch(`${API_BASE}/api/video/by-url?url=${encodeURIComponent(videoUrl)}`);
-        if (!response.ok) throw new Error('Failed to load video');
+        if (!response.ok) await throwApiError(response);
         const video = await response.json();
         
         currentVideo = video;
@@ -1105,7 +1106,7 @@ async function loadVideoDetails(videoId) {
         
         // ✅ CORRECT: Video API call
         const response = await fetch(`${API_BASE}/api/video/${encodeURIComponent(videoId)}`);
-        if (!response.ok) throw new Error('Failed to load video');
+        if (!response.ok) await throwApiError(response);
         const video = await response.json();
         
         currentVideo = video;
@@ -1116,6 +1117,29 @@ async function loadVideoDetails(videoId) {
         showToast('Failed to load video', 'error');
         showError('Failed to load video', error.message || 'Please try again later.');
     }
+}
+
+// ============== API ERROR HELPER ==============
+async function throwApiError(response) {
+    let reason = '';
+    try {
+        const j = await response.json();
+        reason = j.reason || j.error || '';
+    } catch (e) {}
+    throw new Error(reason ? `Failed to load video (${response.status}): ${reason}` : `Failed to load video (${response.status})`);
+}
+
+// ============== SHOW ERROR (was missing) ==============
+function showError(title, message) {
+    if (el.errorState) {
+        const h2 = el.errorState.querySelector('h2');
+        const p = el.errorState.querySelector('p');
+        if (h2) h2.textContent = `⚠️ ${title}`;
+        if (p) p.textContent = message;
+        el.errorState.classList.add('show');
+    }
+    if (el.playerWrapper) el.playerWrapper.style.display = 'none';
+    if (el.videoInfoSection) el.videoInfoSection.style.display = 'none';
 }
 
 // ============== DISPLAY VIDEO ==============
@@ -1168,15 +1192,18 @@ function displayVideo(video) {
     
     // Video Player
     if (el.player) {
-        if (video.videoUrl) {
+        if (video.videoUrl && video.videoUrl !== '#') {
+            console.log('▶️ Setting video source:', video.videoUrl);
             el.player.src = video.videoUrl;
             el.player.poster = video.thumbnail || '';
             if (el.videoOverlay) el.videoOverlay.classList.remove('active');
         } else {
+            console.warn('⚠️ Server returned no playable video link:', video);
             if (el.videoOverlay) {
                 el.videoOverlay.classList.add('active');
                 el.videoOverlay.querySelector('span').textContent = 'No video source available';
             }
+            showToast('No playable video link was found', 'error');
         }
     }
     
@@ -1184,7 +1211,7 @@ function displayVideo(video) {
     if (el.downloadBtn) {
         if (video.downloadUrl && video.downloadUrl !== '#') {
             el.downloadBtn.onclick = () => {
-                window.open(video.downloadUrl, '_blank');
+                window.open(video.downloadUrl, '_blank', 'noopener,noreferrer');
             };
             el.downloadBtn.disabled = false;
             el.downloadBtn.style.opacity = '1';
@@ -1200,7 +1227,13 @@ function displayVideo(video) {
     // Stream Button
     if (el.streamBtn && el.player) {
         el.streamBtn.onclick = () => {
-            el.player.play();
+            const p = el.player.play();
+            if (p && p.catch) {
+                p.catch(err => {
+                    console.warn('Play blocked:', err);
+                    showToast('Tap the play button on the player', 'info');
+                });
+            }
         };
     }
     
@@ -1243,13 +1276,14 @@ function renderRelatedVideos(relatedVideos) {
         const card = document.createElement('div');
         card.className = 'related-card';
         
+        const cleanRelUrl = (video.url || '').replace(/\\/g, '');
         let videoId = video.id;
-        if (!videoId && video.url) {
-            const match = video.url.match(/video-([a-zA-Z0-9]+)/);
+        if (!videoId && cleanRelUrl) {
+            const match = cleanRelUrl.match(/video-([a-zA-Z0-9]+)/);
             videoId = match ? match[1] : 'unknown';
         }
         
-        const urlParam = video.url ? encodeURIComponent(video.url) : videoId;
+        const urlParam = cleanRelUrl ? encodeURIComponent(cleanRelUrl) : videoId;
         
         // ✅ Ensure thumbnail URL is valid
         let thumbnailUrl = video.thumbnail || 'https://via.placeholder.com/240x135/1a1a2e/fff?text=No+Thumbnail';
@@ -1319,12 +1353,21 @@ function setupEventListeners() {
         });
         
         el.player.addEventListener('error', (e) => {
-            console.error('Video error:', e);
+            const err = el.player.error;
+            const code = err ? err.code : 0;
+            const reasons = {
+                1: 'Playback was aborted',
+                2: 'Network error - link may be blocked or expired',
+                3: 'Video could not be decoded',
+                4: 'Video source refused or not supported (link blocked/expired)'
+            };
+            const reason = reasons[code] || 'Unknown error';
+            console.error('Video error code', code, '|', reason, '| src:', el.player.currentSrc, '|', err && err.message);
             if (el.videoOverlay) {
                 el.videoOverlay.classList.add('active');
-                el.videoOverlay.querySelector('span').textContent = '⚠️ Video failed to load';
+                el.videoOverlay.querySelector('span').textContent = `⚠️ ${reason} (code ${code})`;
             }
-            showToast('Video playback error', 'error');
+            showToast(`Video error ${code}: ${reason}`, 'error');
         });
     }
 }
@@ -1373,9 +1416,9 @@ function showToast(message, type = 'info') {
     container.appendChild(toast);
     
     setTimeout(() => {
-        toast.style.animation = 'fadeOut 0.3s ease';
-        setTimeout(() => toast.remove(), 300);
-    }, 3500);
+        toast.style.animation = 'fadeOut 0.5s ease';
+        setTimeout(() => toast.remove(), 500);
+    }, 4500);
 }
 
 console.log('🎬 Video Player loaded successfully!');

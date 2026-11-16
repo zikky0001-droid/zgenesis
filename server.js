@@ -160,7 +160,7 @@ const HOST_REWRITES = _REWRITES.value;
 
 // ----- OPTIONAL STRICT DOMAIN CHECK (off by default) -----
 // When true, /api/video/by-url only accepts hosts from SUPPORTED_DOMAINS
-const ENFORCE_DOMAIN_CHECK = envBool('ENFORCE_DOMAIN_CHECK', true);
+const ENFORCE_DOMAIN_CHECK = envBool('ENFORCE_DOMAIN_CHECK', false);
 
 function isSupportedHost(url) {
     try {
@@ -168,6 +168,32 @@ function isSupportedHost(url) {
         return SUPPORTED_DOMAINS.some(d => host === d || host.endsWith('.' + d));
     } catch (e) {
         return false;
+    }
+}
+
+// ----- DEBUG MODE (verbose video logs; set DEBUG_MODE=false to silence) -----
+const DEBUG_MODE = envBool('DEBUG_MODE', true);
+
+function debugLog(...args) {
+    if (DEBUG_MODE) {
+        console.log('[VIDEO-DEBUG]', new Date().toISOString(), ...args);
+    }
+}
+
+// Safe one-line description of a signed media URL (hides the token, shows expiry)
+function describeMediaUrl(u) {
+    if (!u || u === '#') return '(none)';
+    try {
+        const x = new URL(u);
+        let exp = '';
+        const m = String(u).match(/(?:,|%2C)(\d{9,11})(?:&|$)/i);
+        if (m) {
+            const mins = Math.round((Number(m[1]) * 1000 - Date.now()) / 60000);
+            exp = mins > 0 ? ` | token valid ~${mins} min` : ` | token EXPIRED ${-mins} min ago`;
+        }
+        return `${x.origin}${x.pathname}${x.search ? ` ?...(${x.search.length} chars)` : ''}${exp}`;
+    } catch (e) {
+        return String(u).slice(0, 120);
     }
 }
 
@@ -197,6 +223,14 @@ const HEADERS = {
     ACCEPT: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     ACCEPT_LANGUAGE: 'en-US,en;q=0.9',
     ACCEPT_ENCODING: 'gzip, deflate, br'
+};
+
+// Video pages/streams use REAL header names (HEADERS above has underscore keys
+// that axios does not send as User-Agent/Accept). Home & search keep HEADERS as-is.
+const VIDEO_HEADERS = {
+    'User-Agent': HEADERS.USER_AGENT,
+    'Accept': HEADERS.ACCEPT,
+    'Accept-Language': HEADERS.ACCEPT_LANGUAGE
 };
 
 // ----- FILE PATHS -----
@@ -522,6 +556,73 @@ async function fetchPage(url) {
     }
 }
 
+// Fetch a VIDEO page with real browser headers + detailed logging
+async function fetchVideoPage(url, info = {}) {
+    const t0 = Date.now();
+    debugLog(`➡️  GET video page: ${url}`);
+    try {
+        const response = await axios.get(url, {
+            headers: VIDEO_HEADERS,
+            timeout: TIMEOUTS.REQUEST,
+            maxRedirects: 5
+        });
+        const data = response.data;
+        const len = typeof data === 'string' ? data.length : JSON.stringify(data || '').length;
+        info.status = response.status;
+        info.finalUrl = (response.request && response.request.res && response.request.res.responseUrl) || url;
+        info.contentType = response.headers && response.headers['content-type'];
+        info.length = len;
+        debugLog(`✅ ${response.status} in ${Date.now() - t0}ms | type=${info.contentType} | ${len} chars | final=${info.finalUrl}`);
+        return data;
+    } catch (error) {
+        const status = error.response && error.response.status;
+        info.status = status || error.code || 'ERR';
+        debugLog(`❌ Video page fetch FAILED after ${Date.now() - t0}ms | status=${status || 'none'} | code=${error.code || '-'} | msg=${error.message}`);
+        if (error.response && error.response.data) {
+            const body = typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data);
+            debugLog(`❌ Response body starts: ${body.slice(0, 300).replace(/\s+/g, ' ')}`);
+        }
+        console.error(`❌ Fetch error for ${url}:`, error.message);
+        throw error;
+    }
+}
+
+// Test the CDN link the way a browser would (without / with our site as Referer)
+async function probeMediaUrl(mediaUrl) {
+    const results = [];
+    let siteReferer = '';
+    try { siteReferer = new URL(URLS.API).origin + '/'; } catch (e) { siteReferer = ''; }
+
+    const tests = [{ label: 'no Referer', headers: {} }];
+    if (siteReferer) tests.push({ label: `Referer ${siteReferer}`, headers: { Referer: siteReferer } });
+
+    for (const t of tests) {
+        try {
+            const r = await axios.get(mediaUrl, {
+                headers: { 'User-Agent': VIDEO_HEADERS['User-Agent'], Range: 'bytes=0-1', ...t.headers },
+                responseType: 'stream',
+                timeout: 10000,
+                maxRedirects: 3,
+                validateStatus: () => true
+            });
+            const row = {
+                test: t.label,
+                status: r.status,
+                contentType: r.headers['content-type'],
+                contentLength: r.headers['content-length'],
+                contentRange: r.headers['content-range']
+            };
+            results.push(row);
+            debugLog(`🧪 CDN probe [${t.label}] → ${row.status} | type=${row.contentType} | length=${row.contentLength} | range=${row.contentRange}`);
+            if (r.data && r.data.destroy) r.data.destroy();
+        } catch (e) {
+            results.push({ test: t.label, error: e.message });
+            debugLog(`🧪 CDN probe [${t.label}] failed: ${e.message}`);
+        }
+    }
+    return results;
+}
+
 // ----- VIDEO SCRAPER -----
 
 function scrapeVideos(html, sourceUrl) {
@@ -779,6 +880,7 @@ if (relatedMatch) {
             for (const objStr of videoObjects) {
                 try {
                     const urlMatch = objStr.match(/"u":"([^"]+)"/);
+                    const relUrl = urlMatch ? urlMatch[1].replace(/\\/g, '') : '';  // strip JSON backslashes
                     const titleMatch = objStr.match(/"t":"([^"]+)"/);
                     const durationMatch = objStr.match(/"d":"([^"]+)"/);
                     const viewsMatch = objStr.match(/"n":"([^"]+)"/);
@@ -844,11 +946,11 @@ if (relatedMatch) {
                     
                     if (titleMatch) {
                         // ✅ Deduplicate
-                        const videoId = urlMatch ? urlMatch[1].split('/').pop() : '';
+                        const videoId = relUrl ? relUrl.split('/').pop() : '';
                         if (seenIds.has(videoId)) continue;
                         seenIds.add(videoId);
                         
-                        let fullUrl = urlMatch ? urlMatch[1] : '#';
+                        let fullUrl = relUrl || '#';
                         if (fullUrl && !fullUrl.startsWith('http')) {
                             fullUrl = `${BASE_ORIGIN}${fullUrl}`;
                         }
@@ -871,6 +973,13 @@ if (relatedMatch) {
     } catch (e) {
         console.error('Error parsing related videos:', e.message);
     }
+}
+
+// 🔎 Diagnostics
+debugLog(`📄 Parsed: title="${details.title}" | uploader=${details.uploader} | jsonLd=${jsonLdMatch ? 'yes' : 'NO'} | video=${describeMediaUrl(details.videoUrl)} | download=${details.downloadUrl && details.downloadUrl !== '#' ? 'yes' : 'NO'} | tags=${details.tags.length} | related=${details.relatedVideos.length}`);
+if (!details.videoUrl || details.videoUrl === '#') {
+    const pageTitle = (html.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1];
+    debugLog(`⚠️ NO VIDEO URL FOUND. Page <title>: "${pageTitle}" | html starts: ${String(html).slice(0, 300).replace(/\s+/g, ' ')}`);
 }
 
 return details; // FIX: video details were never returned
@@ -916,7 +1025,7 @@ async function scrapeVideo(videoId) {
     try {
         // Try to construct URL from video ID
         const videoUrl = `${URLS.VIDEO}${videoId}/`;
-        const html = await fetchPage(videoUrl);
+        const html = await fetchVideoPage(videoUrl);
         const details = scrapeVideoDetails(html);
         details.id = videoId;
         return details;
@@ -933,7 +1042,7 @@ async function scrapeVideo(videoId) {
 async function getVideoDownloadUrl(videoId) {
     try {
         const videoUrl = `${URLS.VIDEO}${videoId}/`;
-        const html = await fetchPage(videoUrl);
+        const html = await fetchVideoPage(videoUrl);
         const details = scrapeVideoDetails(html);
         return details.downloadUrl || details.videoUrl;
     } catch (error) {
@@ -955,7 +1064,7 @@ async function streamVideo(videoId, res) {
             url: videoUrl,
             responseType: 'stream',
             timeout: TIMEOUTS.DOWNLOAD,
-            headers: HEADERS
+            headers: VIDEO_HEADERS
         });
         
         res.setHeader('Content-Type', MIME_TYPES.VIDEO_MP4);
@@ -981,7 +1090,7 @@ async function downloadVideo(videoId, res) {
             url: videoUrl,
             responseType: 'stream',
             timeout: TIMEOUTS.DOWNLOAD,
-            headers: HEADERS
+            headers: VIDEO_HEADERS
         });
         
         const filename = `video_${videoId}.mp4`;
@@ -1211,46 +1320,108 @@ app.get('/api/search', async (req, res) => {
 
 // ===== VIDEO BY URL ROUTE (MUST COME FIRST!) =====
 app.get('/api/video/by-url', async (req, res) => {
+    const t0 = Date.now();
     try {
         let videoUrl = req.query.url;
-        
+
+        debugLog('━━━━━━━━━━ /api/video/by-url ━━━━━━━━━━');
+        debugLog('Incoming url param:', videoUrl);
+
         if (!videoUrl) {
             return res.status(400).json({ error: 'Video URL required' });
         }
-        
+
         // 🧹 CLEAN THE URL FOR SCRAPING
         videoUrl = cleanUrlForScraping(videoUrl);
         console.log('🧹 Cleaned URL for scraping:', videoUrl);
+        debugLog('Cleaned URL:', videoUrl);
 
         // 🔒 Optional strict check (ENFORCE_DOMAIN_CHECK=true)
         if (ENFORCE_DOMAIN_CHECK && !isSupportedHost(videoUrl)) {
             return res.status(400).json({ error: 'Unsupported video domain' });
         }
-        
+
         // Check cache
         const cacheKey = getCacheKey('video-by-url', { url: videoUrl });
         const cached = getCached(cacheKey);
-        
+
         if (cached) {
+            debugLog(`💾 Cache HIT | video=${describeMediaUrl(cached.videoUrl)}`);
             return res.json(cached);
         }
-        
+
         // Fetch and scrape the video page using the cleaned URL
-        const html = await fetchPage(videoUrl);
+        const html = await fetchVideoPage(videoUrl);
         const details = scrapeVideoDetails(html);
-        
+
         // Extract video ID from URL
         const match = videoUrl.match(/video-([a-zA-Z0-9]+)/);
         details.id = match ? match[1] : 'unknown';
         details.url = videoUrl;
-        
+
         // Cache the result
         setCached(cacheKey, details);
+
+        debugLog(`✅ Responding in ${Date.now() - t0}ms | id=${details.id} | video=${describeMediaUrl(details.videoUrl)}`);
+
+        // Test the CDN link in the background (does not delay the response)
+        if (DEBUG_MODE && details.videoUrl && details.videoUrl !== '#') {
+            probeMediaUrl(details.videoUrl).catch(() => {});
+        }
+
         res.json(details);
-        
+
     } catch (error) {
         console.error('❌ Video by URL error:', error.message);
-        res.status(500).json({ error: 'Failed to load video' });
+        debugLog(`❌ by-url FAILED after ${Date.now() - t0}ms: ${error.message}`);
+        const body = { error: 'Failed to load video' };
+        if (DEBUG_MODE) {
+            body.reason = error.response && error.response.status
+                ? `source site answered HTTP ${error.response.status}`
+                : error.message;
+        }
+        res.status(500).json(body);
+    }
+});
+
+// ===== DEBUG ROUTE: /api/debug/video?url=<video page url> (only when DEBUG_MODE) =====
+app.get('/api/debug/video', async (req, res) => {
+    if (!DEBUG_MODE) return res.status(404).json({ error: 'Not found' });
+
+    const report = { ok: false };
+    try {
+        let videoUrl = req.query.url;
+        if (!videoUrl) return res.status(400).json({ error: 'url required' });
+
+        videoUrl = cleanUrlForScraping(videoUrl);
+        report.cleanedUrl = videoUrl;
+
+        if (!isSupportedHost(videoUrl)) {
+            return res.status(400).json({ error: 'Unsupported video domain', cleanedUrl: videoUrl, supported: SUPPORTED_DOMAINS });
+        }
+
+        const info = {};
+        const html = await fetchVideoPage(videoUrl, info);
+        report.fetch = info;
+        report.pageTitle = (String(html).match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || null;
+        report.hasJsonLd = /application\/ld\+json/.test(html);
+
+        const details = scrapeVideoDetails(html);
+        report.hasVideoUrl = !!(details.videoUrl && details.videoUrl !== '#');
+        report.video = describeMediaUrl(details.videoUrl);
+        report.title = details.title;
+        report.relatedCount = details.relatedVideos.length;
+        report.relatedSample = details.relatedVideos.slice(0, 2).map(v => v.url);
+
+        if (report.hasVideoUrl) {
+            report.cdnProbe = await probeMediaUrl(details.videoUrl);
+        }
+        report.ok = true;
+        res.json(report);
+    } catch (error) {
+        report.error = error.message;
+        report.httpStatus = error.response && error.response.status;
+        res.status(500).json(report);
     }
 });
 
@@ -1421,6 +1592,7 @@ function startServer() {
         console.log(`   DOMAINS      [${_DOMAINS.source}]: ${SUPPORTED_DOMAINS.join(', ')}`);
         console.log(`   HOST_REWRITES[${_REWRITES.source}]: ${HOST_REWRITES.map(p => p.join('=')).join(', ')}`);
         console.log(`   DOMAIN CHECK: ${ENFORCE_DOMAIN_CHECK ? 'ON' : 'off'}`);
+        console.log(`   DEBUG_MODE:   ${DEBUG_MODE ? 'ON (video logs + /api/debug/video)' : 'off'}`);
         console.log('============================================');
         console.log('📖 Available routes:');
         console.log('   GET  /ping or /health         - Health check');
