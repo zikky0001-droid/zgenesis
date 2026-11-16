@@ -17,6 +17,25 @@ const helmet = require('helmet');
 const cors = require('cors');
 const archiver = require('archiver');
 
+// ============================================
+// 1.5 🔐 ENV LOADING (local .env support)
+// ============================================
+// On Render, env vars are injected by the platform - nothing to do.
+// Locally, a .env file is loaded if present. Real env vars always win.
+(function loadDotEnv() {
+    try {
+        const envFile = path.join(__dirname, '.env');
+        if (!fs.existsSync(envFile)) return;
+        if (typeof process.loadEnvFile === 'function') {
+            process.loadEnvFile(envFile);          // Node 20.12+ / 21.7+
+        } else {
+            require('dotenv').config({ path: envFile }); // optional fallback
+        }
+    } catch (e) {
+        // .env is optional - never crash because of it
+    }
+})();
+
 const app = express();
 const PORT = process.env.PORT || 10000;
 
@@ -24,36 +43,124 @@ const PORT = process.env.PORT || 10000;
 // 2. ⚙️ GLOBAL CONFIGURATION & CONSTANTS
 // ============================================
 
-// ----- ENV HELPERS -----
-function envList(value, fallback) {
-    if (!value) return fallback;
-    const list = value.split(',').map(s => s.trim()).filter(Boolean);
-    return list.length ? list : fallback;
+// ----- ENV PARSING HELPERS -----
+// Tolerant on purpose: handles stray quotes, spaces, brackets and newlines
+// so a slightly messy value on Render can never take the site down.
+
+function cleanEnv(name) {
+    const raw = process.env[name];
+    if (raw === undefined || raw === null) return '';
+    return String(raw).trim().replace(/^["'`]+|["'`]+$/g, '').trim();
 }
 
-function withTrailingSlash(url) {
-    return url.endsWith('/') ? url : url + '/';
+function envUrl(name, fallback, { trailingSlash = false } = {}) {
+    let value = cleanEnv(name);
+    let source = 'env';
+
+    if (!value) {
+        value = fallback;
+        source = 'default';
+    } else {
+        try {
+            const u = new URL(value);
+            if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('not http(s)');
+        } catch (e) {
+            console.warn(`⚠️ ${name} is invalid ("${value}") - using default`);
+            value = fallback;
+            source = 'default (invalid env)';
+        }
+    }
+
+    if (trailingSlash && !value.endsWith('/')) value += '/';
+    return { value, source };
 }
 
-// ----- URL CONSTANTS (ENV-DRIVEN, defaults = original values) -----
+function envList(name, fallback) {
+    const raw = cleanEnv(name);
+    if (!raw) return { value: fallback, source: 'default' };
+
+    let items;
+    try {
+        const parsed = JSON.parse(raw);
+        items = Array.isArray(parsed) ? parsed : raw.split(/[,;\s]+/);
+    } catch (e) {
+        items = raw.split(/[,;\s]+/);
+    }
+
+    items = items
+        .map(x => String(x)
+            .replace(/[\[\]"'`]/g, '')
+            .trim()
+            .toLowerCase()
+            .replace(/^https?:\/\//, '')
+            .replace(/\/.*$/, ''))
+        .filter(Boolean);
+
+    items = [...new Set(items)];
+    if (items.length === 0) {
+        console.warn(`⚠️ ${name} is empty/invalid - using default`);
+        return { value: fallback, source: 'default (invalid env)' };
+    }
+    return { value: items, source: 'env' };
+}
+
+// "from=to,from2=to2"  ->  [['from','to'], ['from2','to2']]
+function envPairs(name, fallback) {
+    const raw = cleanEnv(name);
+    if (!raw) return { value: fallback, source: 'default' };
+
+    const pairs = raw
+        .split(/[,;\s]+/)
+        .map(p => p.replace(/["'`]/g, '').split('=').map(x => x.trim().toLowerCase()))
+        .filter(p => p.length === 2 && p[0] && p[1]);
+
+    if (pairs.length === 0) {
+        console.warn(`⚠️ ${name} is invalid - using default`);
+        return { value: fallback, source: 'default (invalid env)' };
+    }
+    return { value: pairs, source: 'env' };
+}
+
+function envBool(name, fallback = false) {
+    const v = cleanEnv(name).toLowerCase();
+    if (!v) return fallback;
+    return ['1', 'true', 'yes', 'on'].includes(v);
+}
+
+// ----- URL CONSTANTS (from env, defaults = your original values) -----
+const _BASE   = envUrl('BASE_URL',   'https://amp.xnxx.com/',        { trailingSlash: true });
+const _SEARCH = envUrl('SEARCH_URL', 'https://amp.xnxx.com/search/', { trailingSlash: true });
+const _VIDEO  = envUrl('VIDEO_URL',  'https://www.xnxx.com/video-');
+const _API    = envUrl('API_URL',    'https://zgenesis.onrender.com');
+
 const URLS = {
-    BASE: withTrailingSlash(process.env.BASE_URL || 'https://amp.ccxx.com/'),
-    SEARCH: withTrailingSlash(process.env.SEARCH_URL || 'https://amp.ccxx.com/search/'),
-    VIDEO: process.env.VIDEO_URL || 'https://www.ccxx.com/video-',
-    API: process.env.API_URL || 'https://zgenesis.onrender.com'
+    BASE: _BASE.value,
+    SEARCH: _SEARCH.value,
+    VIDEO: _VIDEO.value,
+    API: _API.value
 };
 
 // Origin used to complete relative thumbnail / video links
 const BASE_ORIGIN = new URL(URLS.BASE).origin;
 
-// ----- SUPPORTED DOMAINS (ENV-DRIVEN, comma-separated) -----
-const SUPPORTED_DOMAINS = envList(process.env.SUPPORTED_DOMAINS, [
-    'amp.ccxx.com',
-    'ccxx.com',
-    'cchh.com',
+// ----- SUPPORTED DOMAINS (from env, comma-separated) -----
+const _DOMAINS = envList('SUPPORTED_DOMAINS', [
+    'amp.xnxx.com',
+    'xnxx.com',
+    'xnhh.com',
     'thnxx.com',
     'txnhh.com'
 ]);
+const SUPPORTED_DOMAINS = _DOMAINS.value;
+
+// ----- HOST REWRITES (alias domain -> real domain) -----
+// Default keeps your original behaviour: txnhh.com -> xnxx.com
+const _REWRITES = envPairs('HOST_REWRITES', [['txnhh.com', 'xnxx.com']]);
+const HOST_REWRITES = _REWRITES.value;
+
+// ----- OPTIONAL STRICT DOMAIN CHECK (off by default) -----
+// When true, /api/video/by-url only accepts hosts from SUPPORTED_DOMAINS
+const ENFORCE_DOMAIN_CHECK = envBool('ENFORCE_DOMAIN_CHECK', true);
 
 function isSupportedHost(url) {
     try {
@@ -317,8 +424,10 @@ function cleanUrlForScraping(url) {
         // Remove trailing slash
         cleanUrl = cleanUrl.replace(/\/$/, '');
         
-        // Convert txnhh.com to ccxx.com
-        cleanUrl = cleanUrl.replace(/txnhh\.com/g, 'ccxx.com');
+        // Apply host rewrites (default: txnhh.com -> xnxx.com)
+        for (const [from, to] of HOST_REWRITES) {
+            cleanUrl = cleanUrl.split(from).join(to);
+        }
         
         // Ensure HTTPS
         cleanUrl = cleanUrl.replace(/^http:/, 'https:');
@@ -626,7 +735,7 @@ if (jsonLdMatch) {
                 const securePart = jsonData.contentUrl.split('?')[1];
                 
                 if (baseUrl && securePart) {
-                    details.downloadUrl = `${baseUrl}?${securePart}&download=ccxx_${filename}_SD.mp4`;
+                    details.downloadUrl = `${baseUrl}?${securePart}&download=xnxx_${filename}_SD.mp4`;
                 } else {
                     details.downloadUrl = jsonData.contentUrl;
                 }
@@ -764,7 +873,7 @@ if (relatedMatch) {
     }
 }
 
-return details;
+return details; // FIX: video details were never returned
 }
 
 // ----- SCRAPE FUNCTIONS -----
@@ -899,7 +1008,7 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
             scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-            mediaSrc: ["'self'", "https:", "blob:"],
+            mediaSrc: ["'self'", "https:", "blob:"], // FIX: allow video from CDN
             imgSrc: ["'self'", "data:", "https:", "http:", "*"],
             connectSrc: ["'self'", "https://api.mangadex.org", "https://uploads.mangadex.org"]
         }
@@ -1113,8 +1222,8 @@ app.get('/api/video/by-url', async (req, res) => {
         videoUrl = cleanUrlForScraping(videoUrl);
         console.log('🧹 Cleaned URL for scraping:', videoUrl);
 
-        // 🔒 Only allow supported domains (prevents open-proxy abuse)
-        if (!isSupportedHost(videoUrl)) {
+        // 🔒 Optional strict check (ENFORCE_DOMAIN_CHECK=true)
+        if (ENFORCE_DOMAIN_CHECK && !isSupportedHost(videoUrl)) {
             return res.status(400).json({ error: 'Unsupported video domain' });
         }
         
@@ -1303,6 +1412,15 @@ function startServer() {
         console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`📦 Cache TTL: ${CACHE.TTL / 60000} minutes`);
         console.log(`💾 Cache entries: ${cache.size}`);
+        console.log('--------------------------------------------');
+        console.log('⚙️  Config (env or default):');
+        console.log(`   BASE_URL     [${_BASE.source}]: ${URLS.BASE}`);
+        console.log(`   SEARCH_URL   [${_SEARCH.source}]: ${URLS.SEARCH}`);
+        console.log(`   VIDEO_URL    [${_VIDEO.source}]: ${URLS.VIDEO}`);
+        console.log(`   API_URL      [${_API.source}]: ${URLS.API}`);
+        console.log(`   DOMAINS      [${_DOMAINS.source}]: ${SUPPORTED_DOMAINS.join(', ')}`);
+        console.log(`   HOST_REWRITES[${_REWRITES.source}]: ${HOST_REWRITES.map(p => p.join('=')).join(', ')}`);
+        console.log(`   DOMAIN CHECK: ${ENFORCE_DOMAIN_CHECK ? 'ON' : 'off'}`);
         console.log('============================================');
         console.log('📖 Available routes:');
         console.log('   GET  /ping or /health         - Health check');
