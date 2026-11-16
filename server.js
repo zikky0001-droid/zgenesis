@@ -24,22 +24,45 @@ const PORT = process.env.PORT || 10000;
 // 2. ⚙️ GLOBAL CONFIGURATION & CONSTANTS
 // ============================================
 
-// ----- URL CONSTANTS -----
+// ----- ENV HELPERS -----
+function envList(value, fallback) {
+    if (!value) return fallback;
+    const list = value.split(',').map(s => s.trim()).filter(Boolean);
+    return list.length ? list : fallback;
+}
+
+function withTrailingSlash(url) {
+    return url.endsWith('/') ? url : url + '/';
+}
+
+// ----- URL CONSTANTS (ENV-DRIVEN, defaults = original values) -----
 const URLS = {
-    BASE: 'https://amp.xnxx.com/',
-    SEARCH: 'https://amp.xnxx.com/search/',
-    VIDEO: 'https://www.xnxx.com/video-',
-    API: 'https://zgenesis.onrender.com'
+    BASE: withTrailingSlash(process.env.BASE_URL || 'https://amp.ccxx.com/'),
+    SEARCH: withTrailingSlash(process.env.SEARCH_URL || 'https://amp.ccxx.com/search/'),
+    VIDEO: process.env.VIDEO_URL || 'https://www.ccxx.com/video-',
+    API: process.env.API_URL || 'https://zgenesis.onrender.com'
 };
 
-// ----- SUPPORTED DOMAINS -----
-const SUPPORTED_DOMAINS = [
-    'amp.xnxx.com',
-    'xnxx.com', 
-    'xnhh.com',
+// Origin used to complete relative thumbnail / video links
+const BASE_ORIGIN = new URL(URLS.BASE).origin;
+
+// ----- SUPPORTED DOMAINS (ENV-DRIVEN, comma-separated) -----
+const SUPPORTED_DOMAINS = envList(process.env.SUPPORTED_DOMAINS, [
+    'amp.ccxx.com',
+    'ccxx.com',
+    'cchh.com',
     'thnxx.com',
     'txnhh.com'
-];
+]);
+
+function isSupportedHost(url) {
+    try {
+        const host = new URL(url).hostname.toLowerCase();
+        return SUPPORTED_DOMAINS.some(d => host === d || host.endsWith('.' + d));
+    } catch (e) {
+        return false;
+    }
+}
 
 // ----- CACHE CONSTANTS -----
 const CACHE = {
@@ -294,8 +317,8 @@ function cleanUrlForScraping(url) {
         // Remove trailing slash
         cleanUrl = cleanUrl.replace(/\/$/, '');
         
-        // Convert txnhh.com to xnxx.com
-        cleanUrl = cleanUrl.replace(/txnhh\.com/g, 'xnxx.com');
+        // Convert txnhh.com to ccxx.com
+        cleanUrl = cleanUrl.replace(/txnhh\.com/g, 'ccxx.com');
         
         // Ensure HTTPS
         cleanUrl = cleanUrl.replace(/^http:/, 'https:');
@@ -603,7 +626,7 @@ if (jsonLdMatch) {
                 const securePart = jsonData.contentUrl.split('?')[1];
                 
                 if (baseUrl && securePart) {
-                    details.downloadUrl = `${baseUrl}?${securePart}&download=xnxx_${filename}_SD.mp4`;
+                    details.downloadUrl = `${baseUrl}?${securePart}&download=ccxx_${filename}_SD.mp4`;
                 } else {
                     details.downloadUrl = jsonData.contentUrl;
                 }
@@ -705,7 +728,7 @@ if (relatedMatch) {
                                 thumbnail = `https:${thumbnail}`;
                             } else {
                                 // If it's a relative path, add domain
-                                thumbnail = `https://amp.xnxx.com${thumbnail}`;
+                                thumbnail = `${BASE_ORIGIN}${thumbnail}`;
                             }
                         }
                     }
@@ -718,7 +741,7 @@ if (relatedMatch) {
                         
                         let fullUrl = urlMatch ? urlMatch[1] : '#';
                         if (fullUrl && !fullUrl.startsWith('http')) {
-                            fullUrl = `https://amp.xnxx.com${fullUrl}`;
+                            fullUrl = `${BASE_ORIGIN}${fullUrl}`;
                         }
                         
                         details.relatedVideos.push({
@@ -740,6 +763,8 @@ if (relatedMatch) {
         console.error('Error parsing related videos:', e.message);
     }
 }
+
+return details;
 }
 
 // ----- SCRAPE FUNCTIONS -----
@@ -874,6 +899,7 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
             scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+            mediaSrc: ["'self'", "https:", "blob:"],
             imgSrc: ["'self'", "data:", "https:", "http:", "*"],
             connectSrc: ["'self'", "https://api.mangadex.org", "https://uploads.mangadex.org"]
         }
@@ -1086,6 +1112,11 @@ app.get('/api/video/by-url', async (req, res) => {
         // 🧹 CLEAN THE URL FOR SCRAPING
         videoUrl = cleanUrlForScraping(videoUrl);
         console.log('🧹 Cleaned URL for scraping:', videoUrl);
+
+        // 🔒 Only allow supported domains (prevents open-proxy abuse)
+        if (!isSupportedHost(videoUrl)) {
+            return res.status(400).json({ error: 'Unsupported video domain' });
+        }
         
         // Check cache
         const cacheKey = getCacheKey('video-by-url', { url: videoUrl });
