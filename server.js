@@ -131,9 +131,9 @@ function envBool(name, fallback = false) {
 }
 
 // ----- URL CONSTANTS (from env, defaults = your original values) -----
-const _BASE   = envUrl('BASE_URL',   'https://amp.xnxx.com/',        { trailingSlash: true });
-const _SEARCH = envUrl('SEARCH_URL', 'https://amp.xnxx.com/search/', { trailingSlash: true });
-const _VIDEO  = envUrl('VIDEO_URL',  'https://www.xnxx.com/video-');
+const _BASE   = envUrl('BASE_URL',   'https://amp.ccxx.com/',        { trailingSlash: true });
+const _SEARCH = envUrl('SEARCH_URL', 'https://amp.ccxx.com/search/', { trailingSlash: true });
+const _VIDEO  = envUrl('VIDEO_URL',  'https://www.ccxx.com/video-');
 const _API    = envUrl('API_URL',    'https://zgenesis.onrender.com');
 
 const URLS = {
@@ -166,17 +166,17 @@ function swapToVideoHost(url) {
 
 // ----- SUPPORTED DOMAINS (from env, comma-separated) -----
 const _DOMAINS = envList('SUPPORTED_DOMAINS', [
-    'amp.xnxx.com',
-    'xnxx.com',
-    'xnhh.com',
+    'amp.ccxx.com',
+    'ccxx.com',
+    'cchh.com',
     'thnxx.com',
     'txnhh.com'
 ]);
 const SUPPORTED_DOMAINS = _DOMAINS.value;
 
 // ----- HOST REWRITES (alias domain -> real domain) -----
-// Default keeps your original behaviour: txnhh.com -> xnxx.com
-const _REWRITES = envPairs('HOST_REWRITES', [['txnhh.com', 'xnxx.com']]);
+// Default keeps your original behaviour: txnhh.com -> ccxx.com
+const _REWRITES = envPairs('HOST_REWRITES', [['txnhh.com', 'ccxx.com']]);
 const HOST_REWRITES = _REWRITES.value;
 
 // ----- OPTIONAL STRICT DOMAIN CHECK (off by default) -----
@@ -479,7 +479,7 @@ function cleanUrlForScraping(url) {
         // Remove trailing slash
         cleanUrl = cleanUrl.replace(/\/$/, '');
         
-        // Apply host rewrites (default: txnhh.com -> xnxx.com)
+        // Apply host rewrites (default: txnhh.com -> ccxx.com)
         for (const [from, to] of HOST_REWRITES) {
             cleanUrl = cleanUrl.split(from).join(to);
         }
@@ -857,7 +857,7 @@ if (jsonLdMatch) {
                 const securePart = jsonData.contentUrl.split('?')[1];
                 
                 if (baseUrl && securePart) {
-                    details.downloadUrl = `${baseUrl}?${securePart}&download=xnxx_${filename}_SD.mp4`;
+                    details.downloadUrl = `${baseUrl}?${securePart}&download=ccxx_${filename}_SD.mp4`;
                 } else {
                     details.downloadUrl = jsonData.contentUrl;
                 }
@@ -1528,10 +1528,11 @@ async function getVideoDetailsByUrl(rawUrl, options = {}) {
 }
 
 async function getPublicVideoDetails(rawUrl) {
-    const videoUrl = validatePublicVideoUrl(rawUrl);
-    const details = await getVideoDetailsByUrl(videoUrl, {
-        fetchPage: fetchSupportedVideoPage,
-        enforceSupportedHost: true
+    // Use the exact same URL processing and page-fetch path as
+    // /api/video/by-url. Do not apply the separate public-API domain allowlist:
+    // it can disagree with the website's configured source handling.
+    const details = await getVideoDetailsByUrl(String(rawUrl || ''), {
+        fetchPage: fetchVideoPage
     });
 
     if (!details.videoUrl || details.videoUrl === '#') {
