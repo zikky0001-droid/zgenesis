@@ -1167,7 +1167,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 app.use('/temp', express.static(PATHS.TEMP));
 
-// ----- PUBLIC API RATE LIMITS (v1 only; website routes are deliberately excluded) -----
+// ----- PUBLIC API RATE LIMITS ----
 // The playground calls /api/v1, so its requests are counted. Existing website
 // endpoints such as /api/home and /api/search do not use this limiter.
 // Render runs this in one Node process. For multiple Render instances, replace
@@ -1252,7 +1252,7 @@ function apiPrettyJson(req, res, next) {
     next();
 }
 
-// Only /api/v1 is rate-limited. Website endpoints under /api remain untouched.
+// Only /api/v1 is rate-limited. 
 app.use('/api/v1', apiPrettyJson, apiRateLimit);
 
 // Keep the in-memory limiter bounded and clear stale visitor records.
@@ -1502,7 +1502,7 @@ app.get('/api/v1/limits', (req, res) => {
             perMinute: { limit: API_RATE_LIMITS.minute.limit, windowSeconds: 60, remaining: Number(res.getHeader('X-RateLimit-Minute-Remaining')) },
             perHour: { limit: API_RATE_LIMITS.hour.limit, windowSeconds: 3600, remaining: Number(res.getHeader('X-RateLimit-Hour-Remaining')) }
         },
-        note: 'Limits apply to /api/v1 endpoints, including requests made from the API playground. Existing website API routes are not included.'
+        note: 'Limits apply to /api/v1 endpoints, including requests made from the API playground.'
     });
 });
 
