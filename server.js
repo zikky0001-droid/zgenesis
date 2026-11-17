@@ -179,10 +179,6 @@ const SUPPORTED_DOMAINS = _DOMAINS.value;
 // No HOST_REWRITES environment variable is required. Preserve the existing alias behavior.
 const HOST_REWRITES = [['txnhh.com', 'ccxx.com']];
 
-// ----- OPTIONAL STRICT DOMAIN CHECK (off by default) -----
-// When true, /api/video/by-url only accepts hosts from SUPPORTED_DOMAINS
-const ENFORCE_DOMAIN_CHECK = envBool('ENFORCE_DOMAIN_CHECK', false);
-
 function isSupportedHost(url) {
     try {
         const host = new URL(url).hostname.toLowerCase();
@@ -1315,6 +1311,15 @@ async function getSharedRateCounts(ip) {
     };
 }
 
+let lastRedisWarningAt = 0;
+function logRedisRateLimitWarning(error) {
+    const now = Date.now();
+    if (now - lastRedisWarningAt < 60000) return;
+    lastRedisWarningAt = now;
+    // Avoid logging request credentials, tokens, or full upstream URLs.
+    console.warn(`⚠️ Shared rate limiter unavailable; allowing API request (fail-open): ${error.code || 'REDIS_ERROR'}`);
+}
+
 async function apiRateLimit(req, res, next) {
     try {
         const ip = getClientIp(req);
@@ -1353,8 +1358,7 @@ async function apiRateLimit(req, res, next) {
         next();
     } catch (error) {
         // Fail-open: Redis outages must not take down the public API.
-        // Do not log credentials or request headers; only the sanitized error message is logged.
-        console.warn('⚠️ Shared API rate limiter unavailable; allowing request (fail-open):', String(error.message || 'Redis error').slice(0, 240));
+        logRedisRateLimitWarning(error);
         res.set('X-RateLimit-Status', 'unavailable');
         return next();
     }
@@ -1444,8 +1448,6 @@ app.get('/ping', (req, res) => {
         { method: 'GET', path: '/api/v1/limits', description: 'Current rate-limit usage' },
         { method: 'GET', path: '/api/v1/status', description: 'Public API status' },
         { method: 'GET', path: '/api-docs', description: 'API documentation and playground' },
-        { method: 'POST', path: '/api/clear-cache', description: 'Clear cache' },
-        { method: 'GET', path: '/api/cache-status', description: 'Cache status' },
         { method: 'GET', path: '/', description: 'Homepage' },
         { method: 'GET', path: '/video', description: 'Video player page' }
     ];
@@ -1590,15 +1592,10 @@ async function getVideoDetailsByUrl(rawUrl, options = {}) {
         throw error;
     }
 
-    let videoUrl = cleanUrlForScraping(rawUrl.trim());
-    const fetchPage = options.fetchPage || fetchVideoPage;
-
-    // Match the website route's optional strict-domain setting before cache use.
-    if (ENFORCE_DOMAIN_CHECK && !isSupportedHost(videoUrl)) {
-        const error = new Error('Unsupported video domain');
-        error.status = 400;
-        throw error;
-    }
+    // User-supplied URLs must always pass the configured SUPPORTED_DOMAINS allowlist.
+    // Validate before cache lookup and validate every redirect in fetchSupportedVideoPage.
+    let videoUrl = validatePublicVideoUrl(rawUrl.trim());
+    const fetchPage = options.fetchPage || fetchSupportedVideoPage;
 
     const cacheKey = getCacheKey('video-by-url', { url: videoUrl });
     const cached = getCached(cacheKey);
@@ -1613,7 +1610,7 @@ async function getVideoDetailsByUrl(rawUrl, options = {}) {
     // Use the same alternate-host retry as the website player.
     if (!details.videoUrl || details.videoUrl === '#') {
         const altUrl = swapToVideoHost(videoUrl);
-        if (altUrl && (!options.enforceSupportedHost || isSupportedHost(altUrl))) {
+        if (altUrl && isSupportedHost(altUrl)) {
             debugLog(`🔁 No video link on this host. Retrying on video host: ${altUrl}`);
             try {
                 const html2 = await fetchPage(altUrl);
@@ -1638,11 +1635,9 @@ async function getVideoDetailsByUrl(rawUrl, options = {}) {
 }
 
 async function getPublicVideoDetails(rawUrl) {
-    // Use the exact same URL processing and page-fetch path as
-    // /api/video/by-url. Do not apply the separate public-API domain allowlist:
-    // it can disagree with the website's configured source handling.
+    // Share the same configured allowlist and redirect validation as the website API.
     const details = await getVideoDetailsByUrl(String(rawUrl || ''), {
-        fetchPage: fetchVideoPage
+        fetchPage: fetchSupportedVideoPage
     });
 
     if (!details.videoUrl || details.videoUrl === '#') {
@@ -1952,6 +1947,9 @@ app.get('/api/download/:id', async (req, res) => {
 // ----- CLEAR CACHE ROUTE -----
 
 app.post('/api/clear-cache', (req, res) => {
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1') {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    }
     try {
         clearCache();
         res.json({ success: true, message: 'Cache cleared' });
@@ -1963,6 +1961,9 @@ app.post('/api/clear-cache', (req, res) => {
 // ----- CACHE STATUS ROUTE -----
 
 app.get('/api/cache-status', (req, res) => {
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1') {
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    }
     const status = {
         size: cache.size,
         entries: Array.from(cache.keys()),
@@ -1972,48 +1973,58 @@ app.get('/api/cache-status', (req, res) => {
 });
 
 // ============================================
-// 9. 📄 STATIC PAGE ROUTES
+// 9. 📄 STATIC PAGE ROUTES + NOT FOUND HANDLING
 // ============================================
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+const sendPublicPage = (filename, statusCode = 200) => (req, res) => {
+    res.status(statusCode).sendFile(path.join(PUBLIC_DIR, filename));
+};
+
+// Explicit aliases. Keep /api exact so /api/config and other API endpoints remain JSON.
+app.get('/', sendPublicPage('index.html'));
+app.get(['/index', '/index.html'], sendPublicPage('index.html'));
+app.get(['/api', '/api.html', '/api-docs'], sendPublicPage('api.html'));
+app.get(['/video', '/video.html'], sendPublicPage('video.html'));
+app.get('/404', sendPublicPage('404.html', 404));
+
+// Unknown API paths must return JSON, never the website HTML fallback.
+app.use('/api', (req, res) => {
+    res.status(404).json({
+        success: false,
+        error: {
+            code: 'API_ROUTE_NOT_FOUND',
+            message: 'The requested API endpoint does not exist.',
+            path: req.originalUrl.split('?')[0]
+        }
+    });
 });
 
-app.get('/video', (req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'video.html'));
-});
-
-app.get('/api-docs', (req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'api.html'));
-});
-
-// Catch-all for SPA support
-app.get('*', (req, res) => {
-    // Preserve the existing SPA fallback while resolving files only inside public/.
-    const filePath = path.resolve(PUBLIC_DIR, `.${decodeURIComponent(req.path)}`);
-    if (filePath.startsWith(PUBLIC_DIR + path.sep) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-        return res.sendFile(filePath);
+// Unknown website routes receive the branded 404 page and preserve the requested path.
+app.use((req, res) => {
+    if (req.accepts('html')) {
+        return res.status(404).sendFile(path.join(PUBLIC_DIR, '404.html'));
     }
-    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+    return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'The requested resource does not exist.', path: req.originalUrl.split('?')[0] }
+    });
 });
 
 // ============================================
 // 10. ⚠️ ERROR HANDLING
 // ============================================
 
-// ----- 404 Handler -----
-
-app.use((req, res) => {
-    res.status(404).json({ error: 'Not found' });
-});
-
 // ----- Global Error Handler -----
 
 app.use((err, req, res, next) => {
     console.error('❌ Server error:', err.stack || err.message);
-    res.status(500).json({
-        error: 'Internal server error',
-        message: err.message
+    if (res.headersSent) return next(err);
+    res.status(err.status || 500).json({
+        success: false,
+        error: {
+            code: err.status === 400 ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
+            message: err.status === 400 ? err.message : 'An unexpected server error occurred.'
+        }
     });
 });
 
@@ -2048,7 +2059,7 @@ function startServer() {
         console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`📦 Cache TTL: ${CACHE.TTL / 60000} minutes (lazy cleanup)`);
         console.log(`⏱️ Request deadline: ${TIMEOUTS.SCRAPE / 1000} seconds`);
-        console.log('🚦 API limits: /api/v1 only · 40/minute + 2,500/hour per IP');
+        console.log('🚦 API limits: /api/v1 only · 40/minute + 2,500/hour per IP · Redis fail-open');
         console.log('📖 API docs: /api-docs');
         console.log(`💾 Cache entries: ${cache.size}`);
         console.log('--------------------------------------------');
@@ -2059,7 +2070,7 @@ function startServer() {
         console.log(`   API_URL      [${_API.source}]: ${URLS.API}`);
         console.log(`   DOMAINS      [${_DOMAINS.source}]: ${SUPPORTED_DOMAINS.join(', ')}`);
         console.log(`   HOST ALIASES: ${HOST_REWRITES.map(p => p.join('=')).join(', ')}`);
-        console.log(`   DOMAIN CHECK: ${ENFORCE_DOMAIN_CHECK ? 'ON' : 'off'}`);
+        console.log('   URL VALIDATION: SUPPORTED_DOMAINS allowlist enforced');
         console.log(`   DEBUG_MODE:   ${DEBUG_MODE ? 'ON (video logs + /api/debug/video)' : 'off'}`);
         console.log('============================================');
         console.log('📖 Available routes:');
@@ -2069,7 +2080,6 @@ function startServer() {
         console.log('   GET  /api/video/:id  - Video details');
         console.log('   GET  /api/stream/:id - Stream video');
         console.log('   GET  /api/download/:id - Download video');
-        console.log('   POST /api/clear-cache - Clear cache');
         console.log('============================================');
         console.log('👨‍💻 By Dev Zikky Tech');
         console.log('============================================');

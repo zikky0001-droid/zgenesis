@@ -20,6 +20,23 @@
     .playgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:7px}.field label{font-size:12px;color:var(--muted);font-weight:600}.field input,.field select{width:100%;padding:12px;background:#090d17;border:1px solid var(--line);border-radius:9px;color:var(--text);font:inherit;outline:none}.field input:focus,.field select:focus{border-color:var(--primary)}.wide{grid-column:1/-1}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}.btn{border:0;border-radius:9px;padding:11px 16px;background:linear-gradient(135deg,var(--primary),#6d4bd1);color:white;font-weight:700;cursor:pointer}.btn.secondary{background:var(--panel2);border:1px solid var(--line)}.btn:disabled{opacity:.5;cursor:wait}.resulthead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px}.status{font-size:12px;color:var(--muted)}.usage{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:10px}.usage b{color:var(--text)}.note{border-left:3px solid var(--warn);padding:10px 13px;background:#241b0c;color:#e7d5ad;border-radius:0 8px 8px 0;font-size:13px;margin-top:14px}.footer{color:var(--muted);text-align:center;font-size:12px;margin-top:40px}
     @media(max-width:760px){.layout{grid-template-columns:1fr}.sidebar{position:static;display:flex;gap:5px;overflow:auto}.sidebar strong{display:none}.sidebar a{white-space:nowrap}.navlinks{display:none;position:absolute;top:71px;left:0;right:0;background:var(--panel);padding:14px 22px;flex-direction:column;gap:12px;border-bottom:1px solid var(--line)}.navlinks.open{display:flex}.menu{display:block}.wrap{padding:25px 15px 60px}.limits,.playgrid{grid-template-columns:1fr}.wide{grid-column:auto}section.doc{padding:18px}.hero{padding-top:25px}}
   </style>
+
+    <!-- Social sharing preview. Add your existing image as public/icon.jpg. -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="THE GENESIS">
+    <meta property="og:title" content="THE GENESIS API — Documentation">
+    <meta property="og:description" content="Explore THE GENESIS API endpoints, usage and integration documentation.">
+    <meta property="og:url" content="https://zgenesis.vercel.app/">
+    <meta property="og:image" content="https://zgenesis.vercel.app/icon.jpg">
+    <meta property="og:image:secure_url" content="https://zgenesis.vercel.app/icon.jpg">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:alt" content="THE GENESIS anime platform preview">
+    <meta property="og:image:width" content="525">
+    <meta property="og:image:height" content="316">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="THE GENESIS API — Documentation">
+    <meta name="twitter:description" content="Explore THE GENESIS API endpoints, usage and integration documentation.">
+    <meta name="twitter:image" content="https://zgenesis.vercel.app/icon.jpg">
 </head>
 <body>
   <nav class="navbar"><a class="brand" href="/">THE <b>GENESIS</b></a><div class="navlinks" id="navlinks"><a href="/">Home</a><a class="active" href="/api-docs">API Docs</a><a href="#playground">Playground</a></div><button class="menu" id="menu" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button></nav>
@@ -143,5 +160,6 @@ https://zgenesis.vercel.app/api/v1/download?url=ENCODED_VIDEO_PAGE_URL&redirect=
   $('navlinks').querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>$('navlinks').classList.remove('open')));
 })();
 </script>
+<section class="api-note" aria-label="Rate limiter availability note" style="max-width:1100px;margin:24px auto;padding:16px;border:1px solid rgba(100,160,220,.25);border-radius:12px;background:rgba(100,160,220,.06)"><strong>Rate limiter availability:</strong> THE GENESIS uses the shared Upstash database with its own <code>the-genesis:ratelimit:v1:</code> key prefix. If Redis is unavailable, API requests continue (fail-open), and rate-limit enforcement is temporarily unavailable. This does not affect ZANIMECARD's separate Redis keys.</section>
 </body>
 </html>

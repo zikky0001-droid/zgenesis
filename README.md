@@ -48,3 +48,17 @@ npm start
 ```
 
 For local development, copy `.env.example` to `.env`. Redis credentials are optional; without them, rate limiting uses a process-local in-memory fallback.
+
+
+## Routing and error pages
+
+- `/` and `/index` serve the homepage. `/index.html` is also available.
+- `/api`, `/api.html`, and `/api-docs` serve the API documentation.
+- `/video` and `/video.html` serve the video page.
+- `/script.js` and other files in `public/` are static assets.
+- `/404` displays the custom 404 page with the requested path and returns HTTP 404.
+- Unknown website routes return `public/404.html` with HTTP 404.
+- Unknown `/api/*` routes return JSON `API_ROUTE_NOT_FOUND` with HTTP 404.
+- Add your existing 525 × 316 social preview image at `public/icon.jpg`; Vercel will serve it at `/icon.jpg`. The image is referenced by the Open Graph and Twitter metadata.
+
+Unauthenticated cache-management endpoints are disabled on production deployments.
