@@ -38,9 +38,28 @@ const { AsyncLocalStorage } = require('async_hooks');
 })();
 
 const app = express();
+// Pretty-print every Express JSON response consistently (two-space indentation).
+app.set('json spaces', 2);
 // Trust the hosting platform's proxy hop so req.ip resolves to the visitor IP.
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 10000;
+
+// DEBUG_LOGS is a source-level switch: false = errors only; true = verbose diagnostics.
+// No additional environment variable is required.
+const DEBUG_LOGS = false;
+function debugLog(...args) {
+    if (DEBUG_LOGS) console.log('[THE-GENESIS:DEBUG]', new Date().toISOString(), ...args);
+}
+
+function describeConfiguredEndpoint(value) {
+    try {
+        const parsed = new URL(value);
+        return `${parsed.origin}${parsed.pathname}`;
+    } catch (error) {
+        return '(invalid endpoint)';
+    }
+}
+
 
 // ============================================
 // 2. ⚙️ GLOBAL CONFIGURATION & CONSTANTS
@@ -68,7 +87,7 @@ function envUrl(name, fallback, { trailingSlash = false } = {}) {
             const u = new URL(value);
             if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('not http(s)');
         } catch (e) {
-            console.warn(`⚠️ ${name} is invalid ("${value}") - using default`);
+            debugLog(`Configuration: ${name} is invalid; using its built-in default.`);
             value = fallback;
             source = 'default (invalid env)';
         }
@@ -101,7 +120,7 @@ function envList(name, fallback) {
 
     items = [...new Set(items)];
     if (items.length === 0) {
-        console.warn(`⚠️ ${name} is empty/invalid - using default`);
+        debugLog(`Configuration: ${name} is empty or invalid; using its built-in default.`);
         return { value: fallback, source: 'default (invalid env)' };
     }
     return { value: items, source: 'env' };
@@ -118,17 +137,12 @@ function envPairs(name, fallback) {
         .filter(p => p.length === 2 && p[0] && p[1]);
 
     if (pairs.length === 0) {
-        console.warn(`⚠️ ${name} is invalid - using default`);
+        debugLog(`Configuration: ${name} is invalid; using its built-in default.`);
         return { value: fallback, source: 'default (invalid env)' };
     }
     return { value: pairs, source: 'env' };
 }
 
-function envBool(name, fallback = false) {
-    const v = cleanEnv(name).toLowerCase();
-    if (!v) return fallback;
-    return ['1', 'true', 'yes', 'on'].includes(v);
-}
 
 // ----- URL CONSTANTS (from env, defaults = your original values) -----
 const _BASE   = envUrl('BASE_URL',   'https://amp.ccxx.com/',        { trailingSlash: true });
@@ -187,14 +201,7 @@ function isSupportedHost(url) {
     }
 }
 
-// ----- DEBUG MODE (verbose video logs; set DEBUG_MODE=false to silence) -----
-const DEBUG_MODE = envBool('DEBUG_MODE', false);
-
-function debugLog(...args) {
-    if (DEBUG_MODE) {
-        console.log('[VIDEO-DEBUG]', new Date().toISOString(), ...args);
-    }
-}
+// Video and scraper diagnostics use the single DEBUG_LOGS switch declared at startup.
 
 // Safe one-line description of a signed media URL (hides the token, shows expiry)
 function describeMediaUrl(u) {
@@ -541,7 +548,7 @@ function isCachedValid(key) {
 
 function clearCache() {
     cache.clear();
-    console.log('🧹 Cache cleared');
+    debugLog('Cache cleared.');
 }
 
 function cleanExpiredCache(now = Date.now()) {
@@ -555,7 +562,7 @@ function cleanExpiredCache(now = Date.now()) {
     }
     
     if (count > 0) {
-        console.log(`🧹 Cleaned ${count} expired cache entries`);
+        debugLog(`Cleaned ${count} expired cache entries.`);
     }
 }
 
@@ -590,7 +597,7 @@ async function fetchPage(url) {
         });
         return response.data;
     } catch (error) {
-        console.error(`❌ Fetch error for ${url}:`, error.message);
+        console.error(`❌ Fetch error for ${describeMediaUrl(url)}:`, error.message);
         throw error;
     }
 }
@@ -598,7 +605,7 @@ async function fetchPage(url) {
 // Fetch a VIDEO page with real browser headers + detailed logging
 async function fetchVideoPage(url, info = {}) {
     const t0 = Date.now();
-    debugLog(`➡️  GET video page: ${url}`);
+    debugLog(`GET video page: ${describeMediaUrl(url)}`);
     try {
         const response = await axios.get(url, {
             headers: VIDEO_HEADERS,
@@ -611,7 +618,7 @@ async function fetchVideoPage(url, info = {}) {
         info.finalUrl = (response.request && response.request.res && response.request.res.responseUrl) || url;
         info.contentType = response.headers && response.headers['content-type'];
         info.length = len;
-        debugLog(`✅ ${response.status} in ${Date.now() - t0}ms | type=${info.contentType} | ${len} chars | final=${info.finalUrl}`);
+        debugLog(`Upstream responded ${response.status} in ${Date.now() - t0}ms | type=${info.contentType} | ${len} chars | final=${describeMediaUrl(info.finalUrl)}`);
         return data;
     } catch (error) {
         const status = error.response && error.response.status;
@@ -621,7 +628,7 @@ async function fetchVideoPage(url, info = {}) {
             const body = typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data);
             debugLog(`❌ Response body starts: ${body.slice(0, 300).replace(/\s+/g, ' ')}`);
         }
-        console.error(`❌ Fetch error for ${url}:`, error.message);
+        console.error(`❌ Fetch error for ${describeMediaUrl(url)}:`, error.message);
         throw error;
     }
 }
@@ -1149,6 +1156,7 @@ async function downloadVideo(videoId, res) {
 
 // ----- SERVERLESS REQUEST DEADLINE + LAZY CACHE CLEANUP -----
 app.use((req, res, next) => {
+    debugLog(`Incoming request: ${req.method} ${req.path}`);
     cleanupCacheOnRequest();
     const controller = new AbortController();
     const deadlineAt = Date.now() + TIMEOUTS.SCRAPE;
@@ -1271,7 +1279,8 @@ async function getSharedRateCounts(ip) {
             minuteCount: record.minute.count,
             minuteReset: Math.max(1, Math.ceil((record.minute.start + API_RATE_LIMITS.minute.windowMs - now) / 1000)),
             hourCount: record.hour.count,
-            hourReset: Math.max(1, Math.ceil((record.hour.start + API_RATE_LIMITS.hour.windowMs - now) / 1000))
+            hourReset: Math.max(1, Math.ceil((record.hour.start + API_RATE_LIMITS.hour.windowMs - now) / 1000)),
+            backend: 'memory-local'
         };
     }
 
@@ -1297,26 +1306,39 @@ async function getSharedRateCounts(ip) {
         signal
     });
     const payload = await response.json();
-    if (!response.ok || payload.error || !Array.isArray(payload.result)) {
-        throw new Error(payload.error || `Upstash Redis returned HTTP ${response.status}`);
+    if (!response.ok || payload.error || !Array.isArray(payload.result) || payload.result.length !== 4) {
+        const error = new Error(payload.error || `Upstash Redis returned HTTP ${response.status} or an invalid result.`);
+        error.code = 'UPSTASH_RESPONSE_ERROR';
+        throw error;
     }
 
     const [minuteCount, minuteTtl, hourCount, hourTtl] = payload.result.map(Number);
+    if (![minuteCount, minuteTtl, hourCount, hourTtl].every(Number.isFinite) ||
+        minuteCount < 1 || hourCount < 1 || minuteTtl < 0 || hourTtl < 0) {
+        const error = new Error('Upstash Redis returned invalid counter or expiry values.');
+        error.code = 'UPSTASH_INVALID_RESULT';
+        throw error;
+    }
+
     return {
         minuteCount,
         minuteReset: Math.max(1, Math.ceil(minuteTtl / 1000)),
         hourCount,
-        hourReset: Math.max(1, Math.ceil(hourTtl / 1000))
+        hourReset: Math.max(1, Math.ceil(hourTtl / 1000)),
+        backend: 'upstash-redis'
     };
 }
 
-let lastRedisWarningAt = 0;
-function logRedisRateLimitWarning(error) {
+let lastRedisErrorAt = 0;
+function logRedisRateLimitError(error) {
     const now = Date.now();
-    if (now - lastRedisWarningAt < 60000) return;
-    lastRedisWarningAt = now;
-    // Avoid logging request credentials, tokens, or full upstream URLs.
-    console.warn(`⚠️ Shared rate limiter unavailable; allowing API request (fail-open): ${error.code || 'REDIS_ERROR'}`);
+    if (now - lastRedisErrorAt < 60000) return;
+    lastRedisErrorAt = now;
+    // Never log the Redis URL, token, visitor IP, or raw request headers.
+    console.error('❌ Shared Upstash rate limiter unavailable; allowing this API request (fail-open).', {
+        code: error.code || 'REDIS_ERROR',
+        message: String(error.message || 'Unknown Redis error').slice(0, 300)
+    });
 }
 
 async function apiRateLimit(req, res, next) {
@@ -1327,6 +1349,8 @@ async function apiRateLimit(req, res, next) {
         const hourRemaining = Math.max(0, API_RATE_LIMITS.hour.limit - counts.hourCount);
 
         res.set({
+            'X-RateLimit-Status': 'active',
+            'X-RateLimit-Backend': counts.backend || 'unknown',
             'X-RateLimit-Minute-Limit': String(API_RATE_LIMITS.minute.limit),
             'X-RateLimit-Minute-Remaining': String(minuteRemaining),
             'X-RateLimit-Minute-Reset': String(counts.minuteReset),
@@ -1334,6 +1358,12 @@ async function apiRateLimit(req, res, next) {
             'X-RateLimit-Hour-Remaining': String(hourRemaining),
             'X-RateLimit-Hour-Reset': String(counts.hourReset),
             'RateLimit-Policy': '40;w=60, 2500;w=3600'
+        });
+
+        debugLog('API rate-limit check', {
+            backend: counts.backend,
+            minuteCount: counts.minuteCount,
+            hourCount: counts.hourCount
         });
 
         if (counts.minuteCount > API_RATE_LIMITS.minute.limit ||
@@ -1357,26 +1387,14 @@ async function apiRateLimit(req, res, next) {
         next();
     } catch (error) {
         // Fail-open: Redis outages must not take down the public API.
-        logRedisRateLimitWarning(error);
-        res.set('X-RateLimit-Status', 'unavailable');
+        logRedisRateLimitError(error);
+        res.set({ 'X-RateLimit-Status': 'unavailable', 'X-RateLimit-Backend': 'unavailable' });
         return next();
     }
 }
 
-// Pretty-print JSON responses for the public v1 API only.
-function apiPrettyJson(req, res, next) {
-    const originalJson = res.json;
-    res.json = function prettyJson(body) {
-        const replacer = this.app.get('json replacer');
-        const bodyText = JSON.stringify(body, replacer, 2);
-        this.set('Content-Type', 'application/json; charset=utf-8');
-        return this.send(bodyText);
-    };
-    next();
-}
-
-// Rate limiting remains restricted to /api/v1/*; website /api routes are unchanged.
-app.use('/api/v1', apiPrettyJson, apiRateLimit);
+// All JSON is pretty-printed globally; rate limiting remains scoped to /api/v1/*.
+app.use('/api/v1', apiRateLimit);
 
 // ----- DIRECTORY CREATION -----
 
@@ -1610,7 +1628,7 @@ async function getVideoDetailsByUrl(rawUrl, options = {}) {
     if (!details.videoUrl || details.videoUrl === '#') {
         const altUrl = swapToVideoHost(videoUrl);
         if (altUrl && isSupportedHost(altUrl)) {
-            debugLog(`🔁 No video link on this host. Retrying on video host: ${altUrl}`);
+            debugLog(`No video link on this host. Retrying on video host: ${describeMediaUrl(altUrl)}`);
             try {
                 const html2 = await fetchPage(altUrl);
                 const details2 = scrapeVideoDetails(html2);
@@ -1809,19 +1827,19 @@ app.get('/api/video/by-url', async (req, res) => {
         const incomingUrl = req.query.url;
 
         debugLog('━━━━━━━━━━ /api/video/by-url ━━━━━━━━━━');
-        debugLog('Incoming url param:', incomingUrl);
+        debugLog('Incoming URL param:', describeMediaUrl(incomingUrl));
 
         if (!incomingUrl) {
             return res.status(400).json({ error: 'Video URL required' });
         }
 
         const details = await getVideoDetailsByUrl(String(incomingUrl));
-        debugLog('Cleaned URL:', details.url);
+        debugLog('Cleaned URL:', describeMediaUrl(details.url));
 
         debugLog(`✅ Responding in ${Date.now() - t0}ms | id=${details.id} | video=${describeMediaUrl(details.videoUrl)}`);
 
         // Test the CDN link in the background (does not delay the response).
-        if (DEBUG_MODE && details.videoUrl && details.videoUrl !== '#') {
+        if (DEBUG_LOGS && details.videoUrl && details.videoUrl !== '#') {
             probeMediaUrl(details.videoUrl).catch(() => {});
         }
 
@@ -1831,7 +1849,7 @@ app.get('/api/video/by-url', async (req, res) => {
         console.error('❌ Video by URL error:', error.message);
         debugLog(`❌ by-url FAILED after ${Date.now() - t0}ms: ${error.message}`);
         const body = { error: 'Failed to load video' };
-        if (DEBUG_MODE) {
+        if (DEBUG_LOGS) {
             body.reason = error.response && error.response.status
                 ? `source site answered HTTP ${error.response.status}`
                 : error.message;
@@ -1840,9 +1858,11 @@ app.get('/api/video/by-url', async (req, res) => {
     }
 });
 
-// ===== DEBUG ROUTE: /api/debug/video?url=<video page url> (only when DEBUG_MODE) =====
+// ===== LOCAL-ONLY DEBUG ROUTE (never exposed on production deployments) =====
 app.get('/api/debug/video', async (req, res) => {
-    if (!DEBUG_MODE) return res.status(404).json({ error: 'Not found' });
+    if (!DEBUG_LOGS || process.env.VERCEL === '1' || process.env.NODE_ENV === 'production') {
+        return res.status(404).json({ error: 'Not found' });
+    }
 
     const report = { ok: false };
     try {
@@ -2050,38 +2070,40 @@ function startServer() {
     
     // Start server
     app.listen(PORT, () => {
-        console.log('============================================');
-        console.log('🔥 THE GENESIS - ANIME DOWNLOADER');
-        console.log('============================================');
-        console.log(`🚀 Server running on port: ${PORT}`);
-        console.log(`📚 Started at: ${new Date().toISOString()}`);
-        console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log(`📦 Cache TTL: ${CACHE.TTL / 60000} minutes (lazy cleanup)`);
-        console.log(`⏱️ Request deadline: ${TIMEOUTS.SCRAPE / 1000} seconds`);
-        console.log('🚦 API limits: /api/v1 only · 40/minute + 2,500/hour per IP · Redis fail-open');
-        console.log('📖 API docs: /api-docs');
-        console.log(`💾 Cache entries: ${cache.size}`);
-        console.log('--------------------------------------------');
-        console.log('⚙️  Config (env or default):');
-        console.log(`   BASE_URL     [${_BASE.source}]: ${URLS.BASE}`);
-        console.log(`   SEARCH_URL   [${_SEARCH.source}]: ${URLS.SEARCH}`);
-        console.log(`   VIDEO_URL    [${_VIDEO.source}]: ${URLS.VIDEO}`);
-        console.log(`   API_URL      [${_API.source}]: ${URLS.API}`);
-        console.log(`   DOMAINS      [${_DOMAINS.source}]: ${SUPPORTED_DOMAINS.join(', ')}`);
-        console.log(`   HOST ALIASES: ${HOST_REWRITES.map(p => p.join('=')).join(', ')}`);
-        console.log('   URL VALIDATION: SUPPORTED_DOMAINS allowlist enforced');
-        console.log(`   DEBUG_MODE:   ${DEBUG_MODE ? 'ON (video logs + /api/debug/video)' : 'off'}`);
-        console.log('============================================');
-        console.log('📖 Available routes:');
-        console.log('   GET  /ping or /health         - Health check');
-        console.log('   GET  /api/home       - Homepage videos');
-        console.log('   GET  /api/search     - Search videos');
-        console.log('   GET  /api/video/:id  - Video details');
-        console.log('   GET  /api/stream/:id - Stream video');
-        console.log('   GET  /api/download/:id - Download video');
-        console.log('============================================');
-        console.log('👨‍💻 By Dev Zikky Tech');
-        console.log('============================================');
+        if (DEBUG_LOGS) {
+            console.log('============================================');
+            console.log('🔥 THE GENESIS - ANIME DOWNLOADER');
+            console.log('============================================');
+            console.log(`🚀 Server running on port: ${PORT}`);
+            console.log(`📚 Started at: ${new Date().toISOString()}`);
+            console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`📦 Cache TTL: ${CACHE.TTL / 60000} minutes (lazy cleanup)`);
+            console.log(`⏱️ Request deadline: ${TIMEOUTS.SCRAPE / 1000} seconds`);
+            console.log('🚦 API limits: /api/v1 only · 40/minute + 2,500/hour per IP · Redis fail-open');
+            console.log('📖 API docs: /api-docs');
+            console.log(`💾 Cache entries: ${cache.size}`);
+            console.log('--------------------------------------------');
+            console.log('⚙️  Config (env or default):');
+            console.log(`   BASE_URL     [${_BASE.source}]: ${describeConfiguredEndpoint(URLS.BASE)}`);
+            console.log(`   SEARCH_URL   [${_SEARCH.source}]: ${describeConfiguredEndpoint(URLS.SEARCH)}`);
+            console.log(`   VIDEO_URL    [${_VIDEO.source}]: ${describeConfiguredEndpoint(URLS.VIDEO)}`);
+            console.log(`   API_URL      [${_API.source}]: ${URLS.API}`);
+            console.log(`   DOMAINS      [${_DOMAINS.source}]: ${SUPPORTED_DOMAINS.join(', ')}`);
+            console.log(`   HOST ALIASES: ${HOST_REWRITES.map(p => p.join('=')).join(', ')}`);
+            console.log('   URL VALIDATION: SUPPORTED_DOMAINS allowlist enforced');
+            console.log(`   DEBUG_LOGS:   ${DEBUG_LOGS ? 'ON (video logs + /api/debug/video)' : 'off'}`);
+            console.log('============================================');
+            console.log('📖 Available routes:');
+            console.log('   GET  /ping or /health         - Health check');
+            console.log('   GET  /api/home       - Homepage videos');
+            console.log('   GET  /api/search     - Search videos');
+            console.log('   GET  /api/video/:id  - Video details');
+            console.log('   GET  /api/stream/:id - Stream video');
+            console.log('   GET  /api/download/:id - Download video');
+            console.log('============================================');
+            console.log('👨‍💻 By Dev Zikky Tech');
+            console.log('============================================');
+        }
     });
 }
 

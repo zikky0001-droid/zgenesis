@@ -30,9 +30,13 @@ THE GENESIS uses the same Upstash database URL and token as ZANIMECARD, but it n
 
 Only the `/api/v1/*` endpoints are rate-limited: **40 requests per minute** and **2,500 requests per hour per IP**. Website endpoints such as `/api/home` and `/api/search` are not included. Shared Redis counters keep the limits consistent across Vercel instances.
 
-**Redis failure policy: fail-open.** If Redis credentials are missing or Redis is temporarily unavailable, API requests continue instead of returning HTTP 503. Rate-limit enforcement is temporarily unavailable during that period. A warning is logged, and normal shared enforcement resumes when Redis recovers. This is an availability trade-off, not a guarantee of rate limiting during Redis outages.
+**Redis failure policy: fail-open.** If Redis credentials are missing or Redis is temporarily unavailable, API requests continue instead of returning HTTP 503. Rate-limit enforcement is temporarily unavailable during that period. A Redis error is logged at most once per minute per function instance, and normal shared enforcement resumes when Redis recovers. This is an availability trade-off, not a guarantee of rate limiting during Redis outages.
 
 ## Runtime behaviour
+
+- All Express JSON responses use two-space pretty printing, including `/ping`, successful API responses, validation errors and JSON 404 responses. HTML pages and streamed/downloaded media retain their native formats.
+- `DEBUG_LOGS` is a source-level constant near the top of `server.js`, defaulting to `false`. With it off, routine startup/request/cache diagnostics are suppressed while errors remain logged. Set it to `true` temporarily for verbose diagnostics. It does not add an environment variable.
+- Successful `/api/v1/*` rate-limit checks return `X-RateLimit-Status: active` and `X-RateLimit-Backend: upstash-redis`. If Redis is unavailable, fail-open requests return `X-RateLimit-Status: unavailable` and are allowed through.
 
 - Cache entries expire after 60 seconds. Expired entries are removed lazily when requests arrive; no background interval or Cron job is used.
 - Each incoming request has a shared 165-second deadline. Upstream Axios requests and retries are cancellation-aware.
@@ -59,6 +63,6 @@ For local development, copy `.env.example` to `.env`. Redis credentials are opti
 - `/404` displays the custom 404 page with the requested path and returns HTTP 404.
 - Unknown website routes return `public/404.html` with HTTP 404.
 - Unknown `/api/*` routes return JSON `API_ROUTE_NOT_FOUND` with HTTP 404.
-- Add your existing 525 × 316 social preview image at `public/icon.jpg`; Vercel will serve it at `/icon.jpg`. The image is referenced by the Open Graph and Twitter metadata.
+- The bundled 525 × 316 social preview image is `public/icon.jpg`; Vercel serves it at `/icon.jpg`. Public pages reference it in Open Graph, Twitter Card and `image_src` metadata.
 
 Unauthenticated cache-management endpoints are disabled on production deployments.
