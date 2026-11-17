@@ -1590,11 +1590,42 @@ app.get('/api/v1/video', async (req, res) => {
     }
 });
 
+function getSignedUrlExpiry(url) {
+    try {
+        const parsed = new URL(url);
+        const expiryNames = ['expires', 'expiry', 'expires_at', 'exp', 'e'];
+
+        // Prefer an explicitly named expiry query parameter when the CDN provides one.
+        for (const name of expiryNames) {
+            const value = parsed.searchParams.get(name);
+            if (value && /^\d{10,13}$/.test(value.trim())) {
+                const numeric = Number(value.trim());
+                const milliseconds = value.trim().length === 13 ? numeric : numeric * 1000;
+                const date = new Date(milliseconds);
+                if (Number.isFinite(date.getTime())) return date.toISOString();
+            }
+        }
+
+        // This CDN places the Unix expiry timestamp after the comma in `secure`.
+        const secure = parsed.searchParams.get('secure') || '';
+        const match = secure.match(/(?:^|,)\s*(\d{10,13})\s*$/);
+        if (!match) return null;
+
+        const numeric = Number(match[1]);
+        const milliseconds = match[1].length === 13 ? numeric : numeric * 1000;
+        const date = new Date(milliseconds);
+        return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+    } catch (_) {
+        return null;
+    }
+}
+
 app.get('/api/v1/stream', async (req, res) => {
     try {
         if (!req.query.url) return res.status(400).json({ success: false, error: { code: 'URL_REQUIRED', message: 'Pass a video page URL using the url parameter.' } });
         const details = await getPublicVideoDetails(String(req.query.url));
-        res.json({ success: true, streamUrl: details.videoUrl, expiresAt: null, sourcePage: details.url, note: 'The upstream host controls signed-link expiry; no reliable expiry timestamp was exposed.' });
+        const expiresAt = getSignedUrlExpiry(details.videoUrl);
+        res.json({ success: true, streamUrl: details.videoUrl, expiresAt, sourcePage: details.url, note: expiresAt ? 'Expiry time was extracted from the signed stream URL; the upstream host controls its validity.' : 'No expiry timestamp was found in the signed stream URL.' });
     } catch (error) {
         const status = error.status || 502;
         res.status(status).json({ success: false, error: { code: status === 404 ? 'VIDEO_NOT_FOUND' : status === 400 ? 'INVALID_URL' : 'STREAM_LOOKUP_FAILED', message: status < 500 ? error.message : 'Unable to retrieve a stream link from the source.' } });

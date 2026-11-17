@@ -32,7 +32,7 @@
         <section class="doc" id="limits"><h2>Rate limits</h2><p class="muted">Limits are applied to each visitor IP address across every <code class="inlinecode">/api</code> route, including the existing website endpoints and this playground.</p><div class="limits"><div class="limit"><b>40 <small style="font-size:14px">requests</small></b><span>Per minute · per IP</span></div><div class="limit"><b>2,500 <small style="font-size:14px">requests</small></b><span>Per hour · per IP</span></div></div><p class="muted">When a limit is exceeded, the API responds with HTTP <code class="inlinecode">429</code> and a <code class="inlinecode">Retry-After</code> header. Rate-limit headers report remaining requests and reset times. The current Render setup uses an in-memory counter; counters reset when the service restarts and are not shared between multiple instances.</p></section>
         <section class="doc" id="search"><h2>1. Search videos</h2><div class="endpoint"><div class="ephead"><span class="method">GET</span><span class="path">/api/v1/search?q={query}</span></div><div class="epbody">Search the configured catalogue source. <b>Required:</b> <code>q</code> (2–120 characters). Returns the scraped video results and source metadata.</div></div><div class="code">curl "https://YOUR-DOMAIN/api/v1/search?q=one%20piece"</div></section>
         <section class="doc" id="video"><h2>2. Get video details</h2><div class="endpoint"><div class="ephead"><span class="method">GET</span><span class="path">/api/v1/video?url={videoPageUrl}</span></div><div class="epbody">Resolve a supported video page and return its metadata, stream URL, download URL and related information. The URL must belong to one of the configured supported domains.</div></div><div class="code">curl "https://YOUR-DOMAIN/api/v1/video?url=https%3A%2F%2Fwww.ccxx.com%2Fvideo-EXAMPLE"</div></section>
-        <section class="doc" id="stream"><h2>3. Get stream link</h2><div class="endpoint"><div class="ephead"><span class="method">GET</span><span class="path">/api/v1/stream?url={videoPageUrl}</span></div><div class="epbody">Returns a direct upstream stream URL in JSON. Signed media URLs may expire; the source controls their lifetime and the API does not invent an expiry timestamp.</div></div><div class="code">curl "https://YOUR-DOMAIN/api/v1/stream?url=ENCODED_VIDEO_PAGE_URL"</div></section>
+        <section class="doc" id="stream"><h2>3. Get stream link</h2><div class="endpoint"><div class="ephead"><span class="method">GET</span><span class="path">/api/v1/stream?url={videoPageUrl}</span></div><div class="epbody">Returns a direct upstream stream URL in JSON. When the signed URL exposes an expiry timestamp, the API returns it as an ISO 8601 <code>expiresAt</code> value; otherwise it returns <code>null</code>.</div></div><div class="code">curl "https://YOUR-DOMAIN/api/v1/stream?url=ENCODED_VIDEO_PAGE_URL"</div></section>
         <section class="doc" id="download"><h2>4. Get or open download link</h2><div class="endpoint"><div class="ephead"><span class="method">GET</span><span class="path">/api/v1/download?url={videoPageUrl}</span></div><div class="epbody">Returns a JSON download URL by default. Add <code>redirect=true</code> to redirect the browser to the upstream download URL, allowing the source server to handle the actual file transfer.</div></div><div class="code"># JSON response
 curl "https://YOUR-DOMAIN/api/v1/download?url=ENCODED_VIDEO_PAGE_URL"
 
@@ -51,7 +51,7 @@ https://YOUR-DOMAIN/api/v1/download?url=ENCODED_VIDEO_PAGE_URL&redirect=true</di
         <section class="doc" id="playground"><h2>API Playground</h2><p class="muted">Test the live API from this page. Every Send action counts toward the same rate limits as other API requests.</p>
           <div class="playgrid"><div class="field"><label for="endpoint">Endpoint</label><select id="endpoint"><option value="search">Search videos</option><option value="video">Video details</option><option value="stream">Stream link</option><option value="download">Download link</option><option value="limits">My rate limits</option><option value="status">API status</option></select></div><div class="field" id="queryField"><label for="query">Search query</label><input id="query" placeholder="e.g. One Piece" maxlength="120"></div><div class="field wide" id="urlField" style="display:none"><label for="videoUrl">Video page URL (supported source domain)</label><input id="videoUrl" type="url" placeholder="https://www.ccxx.com/video-..."></div></div>
           <div class="actions"><button class="btn" id="send"><i class="fa-solid fa-paper-plane"></i> Send request</button><button class="btn secondary" id="openDownload" style="display:none"><i class="fa-solid fa-download"></i> Open download</button><button class="btn secondary" id="copyRequest"><i class="fa-regular fa-copy"></i> Copy cURL</button></div>
-          <div class="resulthead"><b>Response</b><span class="status" id="status">Ready</span></div><div class="code" id="output">Choose an endpoint and send a request to see its response.</div><div class="usage"><span>Minute remaining: <b id="minuteRemaining">—</b></span><span>Hourly remaining: <b id="hourRemaining">—</b></span></div>
+          <div class="resulthead"><div style="display:flex;align-items:center;gap:10px"><b>Response</b><button class="copy" id="copyResponse" type="button"><i class="fa-regular fa-copy"></i> Copy response</button></div><span class="status" id="status">Ready</span></div><div class="code" id="output">Choose an endpoint and send a request to see its response.</div><div class="usage"><span>Minute remaining: <b id="minuteRemaining">—</b></span><span>Hourly remaining: <b id="hourRemaining">—</b></span></div>
         </section>
       </div>
     </div>
@@ -98,10 +98,30 @@ https://YOUR-DOMAIN/api/v1/download?url=ENCODED_VIDEO_PAGE_URL&redirect=true</di
     finally{$('send').disabled=false;}
   });
   $('openDownload').addEventListener('click',()=>{if(!$('videoUrl').value.trim()){$('status').textContent='Enter a video page URL';return;}window.open(buildUrl(true),'_blank','noopener');});
+  async function copyText(value){
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    const field=document.createElement('textarea');
+    field.value=value;field.setAttribute('readonly','');
+    field.style.position='fixed';field.style.opacity='0';
+    document.body.appendChild(field);field.select();
+    const copied=document.execCommand('copy');field.remove();
+    if(!copied)throw new Error('Clipboard unavailable');
+  }
+  $('copyResponse').addEventListener('click',async()=>{
+    const responseText=$('output').textContent;
+    if(!responseText || responseText==='Choose an endpoint and send a request to see its response.'){
+      $('status').textContent='No response to copy';return;
+    }
+    try{await copyText(responseText);$('status').textContent='Response copied';}
+    catch(_){$('status').textContent='Clipboard unavailable';}
+  });
   $('copyRequest').addEventListener('click',async()=>{
     if(!lastRequest)lastRequest=buildUrl();
     const command='curl -H "Accept: application/json" '+JSON.stringify(lastRequest);
-    try{await navigator.clipboard.writeText(command);$('status').textContent='cURL copied';}catch(_){$('status').textContent='Clipboard unavailable';}
+    try{await copyText(command);$('status').textContent='cURL copied';}catch(_){$('status').textContent='Clipboard unavailable';}
   });
   $('menu').addEventListener('click',()=>$('navlinks').classList.toggle('open'));
   $('navlinks').querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>$('navlinks').classList.remove('open')));
