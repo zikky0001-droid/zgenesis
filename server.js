@@ -1397,8 +1397,7 @@ app.get('/ping', (req, res) => {
     res.status(200).json(response);
 });
 
-// ----- VERSIONED PUBLIC API -----
-
+// ----- PUBLIC URL SAFETY + SHARED VIDEO-BY-URL PROCESSING -----
 function validatePublicVideoUrl(rawUrl) {
     if (typeof rawUrl !== 'string' || !rawUrl.trim() || rawUrl.length > 128) {
         const error = new Error('A valid video page URL is required (maximum 128 characters).');
@@ -1407,7 +1406,6 @@ function validatePublicVideoUrl(rawUrl) {
     }
 
     let parsed;
-
     try {
         parsed = new URL(rawUrl.trim());
     } catch (_) {
@@ -1427,53 +1425,27 @@ function validatePublicVideoUrl(rawUrl) {
         throw error;
     }
 
-    // Always use Render environment configuration first.
-    // Fall back to the existing application defaults if unavailable.
-    const allowedDomains = String(
-        process.env.SUPPORTED_DOMAINS ||
-        'amp.ccxx.com,ccxx.com,cchh.com,thnxx.com,txnhh.com'
-    )
-        .split(',')
-        .map(domain => domain.trim().toLowerCase())
-        .filter(Boolean);
-
-    function isAllowedHost(url) {
-        try {
-            const host = new URL(url).hostname.toLowerCase();
-
-            return allowedDomains.some(domain =>
-                host === domain || host.endsWith('.' + domain)
-            );
-        } catch (_) {
-            return false;
-        }
-    }
-
-    // Validate the original URL.
-    if (!isAllowedHost(parsed.toString())) {
-        const error = new Error(
-            `Unsupported video domain: ${parsed.hostname}`
-        );
+    // Use the application's already-normalized environment-backed allowlist.
+    // This avoids parsing SUPPORTED_DOMAINS differently from the website.
+    if (!isSupportedHost(parsed.toString())) {
+        const error = new Error(`Unsupported video domain: ${parsed.hostname}`);
         error.status = 400;
         throw error;
     }
 
-    // Apply the application's existing URL cleaning and rewrites.
     const cleaned = cleanUrlForScraping(parsed.toString());
-
-    // Validate the rewritten URL too.
-    if (!isAllowedHost(cleaned)) {
+    if (!isSupportedHost(cleaned)) {
         const error = new Error('The rewritten video domain is not supported.');
         error.status = 400;
         throw error;
     }
+
     return cleaned;
 }
 
 async function fetchSupportedVideoPage(startUrl) {
-    // Follow redirects manually and re-validate every destination before making
-    // another outbound request. This prevents a supported source URL from
-    // redirecting the API fetcher to an unrelated/internal host.
+    // Preserve the public API's redirect protection. Every redirect destination
+    // must also pass the same environment-backed SUPPORTED_DOMAINS check.
     let currentUrl = validatePublicVideoUrl(startUrl);
     for (let hop = 0; hop <= 5; hop++) {
         const response = await axios.get(currentUrl, {
@@ -1482,51 +1454,92 @@ async function fetchSupportedVideoPage(startUrl) {
             maxRedirects: 0,
             validateStatus: status => status >= 200 && status < 400
         });
+
         if (response.status >= 300 && response.status < 400) {
             const location = response.headers && response.headers.location;
-            if (!location || hop === 5) throw new Error('Too many or invalid source redirects.');
+            if (!location || hop === 5) {
+                throw new Error('Too many or invalid source redirects.');
+            }
             currentUrl = validatePublicVideoUrl(new URL(location, currentUrl).toString());
             continue;
         }
+
         return response.data;
     }
+
     throw new Error('Unable to follow source redirects safely.');
 }
 
-async function getPublicVideoDetails(rawUrl) {
-    const videoUrl = validatePublicVideoUrl(rawUrl);
-    const cacheKey = getCacheKey('v1-video-by-url', { url: videoUrl });
+// Both /api/video/by-url and the versioned public API now share URL cleaning,
+// cache handling, detail scraping, and alternate-host fallback. The public API
+// supplies its redirect-safe fetcher; the website keeps its existing fetcher.
+async function getVideoDetailsByUrl(rawUrl, options = {}) {
+    if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+        const error = new Error('Video URL required');
+        error.status = 400;
+        throw error;
+    }
+
+    let videoUrl = cleanUrlForScraping(rawUrl.trim());
+    const fetchPage = options.fetchPage || fetchVideoPage;
+
+    // Match the website route's optional strict-domain setting before cache use.
+    if (ENFORCE_DOMAIN_CHECK && !isSupportedHost(videoUrl)) {
+        const error = new Error('Unsupported video domain');
+        error.status = 400;
+        throw error;
+    }
+
+    const cacheKey = getCacheKey('video-by-url', { url: videoUrl });
     const cached = getCached(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+        debugLog(`💾 Cache HIT | video=${describeMediaUrl(cached.videoUrl)}`);
+        return cached;
+    }
 
-    const html = await fetchSupportedVideoPage(videoUrl);
+    const html = await fetchPage(videoUrl);
     let details = scrapeVideoDetails(html);
-    let finalPageUrl = videoUrl;
 
+    // Use the same alternate-host retry as the website player.
     if (!details.videoUrl || details.videoUrl === '#') {
         const altUrl = swapToVideoHost(videoUrl);
-        if (altUrl && isSupportedHost(altUrl)) {
+        if (altUrl && (!options.enforceSupportedHost || isSupportedHost(altUrl))) {
+            debugLog(`🔁 No video link on this host. Retrying on video host: ${altUrl}`);
             try {
-                const alternateHtml = await fetchSupportedVideoPage(altUrl);
-                const alternateDetails = scrapeVideoDetails(alternateHtml);
-                if (alternateDetails.videoUrl && alternateDetails.videoUrl !== '#') {
-                    details = alternateDetails;
-                    finalPageUrl = altUrl;
+                const html2 = await fetchPage(altUrl);
+                const details2 = scrapeVideoDetails(html2);
+                if (details2.videoUrl && details2.videoUrl !== '#') {
+                    details = details2;
+                    videoUrl = altUrl;
+                    debugLog('🔁 Retry succeeded - using video-host page');
+                } else {
+                    debugLog('🔁 Retry also had no video link');
                 }
-            } catch (error) {
-                debugLog(`V1 alternate host retry failed: ${error.message}`);
+            } catch (retryErr) {
+                debugLog(`🔁 Alternate-host retry failed: ${retryErr.message}`);
             }
         }
     }
 
-    details.id = getVideoIdFromUrl(finalPageUrl) || 'unknown';
-    details.url = finalPageUrl;
+    details.id = getVideoIdFromUrl(videoUrl) || 'unknown';
+    details.url = videoUrl;
+    setCached(cacheKey, details);
+    return details;
+}
+
+async function getPublicVideoDetails(rawUrl) {
+    const videoUrl = validatePublicVideoUrl(rawUrl);
+    const details = await getVideoDetailsByUrl(videoUrl, {
+        fetchPage: fetchSupportedVideoPage,
+        enforceSupportedHost: true
+    });
+
     if (!details.videoUrl || details.videoUrl === '#') {
         const error = new Error('No playable stream was found for this video.');
         error.status = 404;
         throw error;
     }
-    setCached(cacheKey, details);
+
     return details;
 }
 
@@ -1652,70 +1665,21 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/video/by-url', async (req, res) => {
     const t0 = Date.now();
     try {
-        let videoUrl = req.query.url;
+        const incomingUrl = req.query.url;
 
         debugLog('━━━━━━━━━━ /api/video/by-url ━━━━━━━━━━');
-        debugLog('Incoming url param:', videoUrl);
+        debugLog('Incoming url param:', incomingUrl);
 
-        if (!videoUrl) {
+        if (!incomingUrl) {
             return res.status(400).json({ error: 'Video URL required' });
         }
 
-        // 🧹 CLEAN THE URL FOR SCRAPING
-        videoUrl = cleanUrlForScraping(videoUrl);
-        console.log('🧹 Cleaned URL for scraping:', videoUrl);
-        debugLog('Cleaned URL:', videoUrl);
-
-        // 🔒 Optional strict check (ENFORCE_DOMAIN_CHECK=true)
-        if (ENFORCE_DOMAIN_CHECK && !isSupportedHost(videoUrl)) {
-            return res.status(400).json({ error: 'Unsupported video domain' });
-        }
-
-        // Check cache
-        const cacheKey = getCacheKey('video-by-url', { url: videoUrl });
-        const cached = getCached(cacheKey);
-
-        if (cached) {
-            debugLog(`💾 Cache HIT | video=${describeMediaUrl(cached.videoUrl)}`);
-            return res.json(cached);
-        }
-
-        // Fetch and scrape the video page using the cleaned URL
-        const html = await fetchVideoPage(videoUrl);
-        let details = scrapeVideoDetails(html);
-
-        // 🔁 Page had no playable link (e.g. AMP/other host)? Retry on the VIDEO_URL host
-        if (!details.videoUrl || details.videoUrl === '#') {
-            const altUrl = swapToVideoHost(videoUrl);
-            if (altUrl) {
-                debugLog(`🔁 No video link on this host. Retrying on video host: ${altUrl}`);
-                try {
-                    const html2 = await fetchVideoPage(altUrl);
-                    const details2 = scrapeVideoDetails(html2);
-                    if (details2.videoUrl && details2.videoUrl !== '#') {
-                        details = details2;
-                        videoUrl = altUrl;
-                        debugLog('🔁 Retry succeeded - using video-host page');
-                    } else {
-                        debugLog('🔁 Retry also had no video link');
-                    }
-                } catch (retryErr) {
-                    debugLog(`🔁 Retry failed: ${retryErr.message}`);
-                }
-            }
-        }
-
-        // Extract video ID from URL
-        const match = videoUrl.match(/video-([a-zA-Z0-9]+)/);
-        details.id = match ? match[1] : 'unknown';
-        details.url = videoUrl;
-
-        // Cache the result
-        setCached(cacheKey, details);
+        const details = await getVideoDetailsByUrl(String(incomingUrl));
+        debugLog('Cleaned URL:', details.url);
 
         debugLog(`✅ Responding in ${Date.now() - t0}ms | id=${details.id} | video=${describeMediaUrl(details.videoUrl)}`);
 
-        // Test the CDN link in the background (does not delay the response)
+        // Test the CDN link in the background (does not delay the response).
         if (DEBUG_MODE && details.videoUrl && details.videoUrl !== '#') {
             probeMediaUrl(details.videoUrl).catch(() => {});
         }
@@ -1731,7 +1695,7 @@ app.get('/api/video/by-url', async (req, res) => {
                 ? `source site answered HTTP ${error.response.status}`
                 : error.message;
         }
-        res.status(500).json(body);
+        res.status(error.status || 500).json(body);
     }
 });
 
