@@ -167,7 +167,7 @@ function swapToVideoHost(url) {
 // ----- SUPPORTED DOMAINS (from env, comma-separated) -----
 const _DOMAINS = envList('SUPPORTED_DOMAINS', [
     'amp.ccxx.com',
-    'ccxx.com',
+    'xnxx.com',
     'cchh.com',
     'thnxx.com',
     'txnhh.com'
@@ -176,7 +176,7 @@ const SUPPORTED_DOMAINS = _DOMAINS.value;
 
 // ----- HOST REWRITES (alias domain -> real domain) -----
 // Default keeps your original behaviour: txnhh.com -> ccxx.com
-const _REWRITES = envPairs('HOST_REWRITES', [['txnhh.com', 'ccxx.com']]);
+const _REWRITES = envPairs('HOST_REWRITES', [['txnhh.com', 'xnxx.com']]);
 const HOST_REWRITES = _REWRITES.value;
 
 // ----- OPTIONAL STRICT DOMAIN CHECK (off by default) -----
