@@ -193,7 +193,7 @@ function isSupportedHost(url) {
 }
 
 // ----- DEBUG MODE (verbose video logs; set DEBUG_MODE=false to silence) -----
-const DEBUG_MODE = envBool('DEBUG_MODE', true);
+const DEBUG_MODE = envBool('DEBUG_MODE', false);
 
 function debugLog(...args) {
     if (DEBUG_MODE) {
@@ -234,7 +234,7 @@ const TIMEOUTS = {
 // ----- LIMIT CONSTANTS -----
 const LIMITS = {
     MAX_VIDEOS: 30,
-    MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
+    MAX_FILE_SIZE: 200 * 1024 * 1024, // 200MB
     MAX_PAGES: 10
 };
 
@@ -622,7 +622,7 @@ async function probeMediaUrl(mediaUrl) {
             const r = await axios.get(mediaUrl, {
                 headers: { 'User-Agent': VIDEO_HEADERS['User-Agent'], Range: 'bytes=0-1', ...t.headers },
                 responseType: 'stream',
-                timeout: 10000,
+                timeout: 15000,
                 maxRedirects: 3,
                 validateStatus: () => true
             });
@@ -1398,31 +1398,71 @@ app.get('/ping', (req, res) => {
 });
 
 // ----- VERSIONED PUBLIC API -----
+
 function validatePublicVideoUrl(rawUrl) {
-    if (typeof rawUrl !== 'string' || !rawUrl.trim() || rawUrl.length > 2048) {
-        const error = new Error('A valid video page URL is required (maximum 2048 characters).');
+    if (typeof rawUrl !== 'string' || !rawUrl.trim() || rawUrl.length > 128) {
+        const error = new Error('A valid video page URL is required (maximum 128 characters).');
         error.status = 400;
         throw error;
     }
+
     let parsed;
-    try { parsed = new URL(rawUrl.trim()); } catch (_) {
+
+    try {
+        parsed = new URL(rawUrl.trim());
+    } catch (_) {
         const error = new Error('The supplied URL is invalid.');
         error.status = 400;
         throw error;
     }
-    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password ||
-        (parsed.port && !['80', '443'].includes(parsed.port))) {
+
+    if (
+        !['http:', 'https:'].includes(parsed.protocol) ||
+        parsed.username ||
+        parsed.password ||
+        (parsed.port && !['80', '443'].includes(parsed.port))
+    ) {
         const error = new Error('Only public HTTP/HTTPS video-page URLs are accepted.');
         error.status = 400;
         throw error;
     }
-    if (!isSupportedHost(parsed.toString())) {
-        const error = new Error('Unsupported video domain.');
+
+    // Always use Render environment configuration first.
+    // Fall back to the existing application defaults if unavailable.
+    const allowedDomains = String(
+        process.env.SUPPORTED_DOMAINS ||
+        'amp.ccxx.com,ccxx.com,cchh.com,thnxx.com,txnhh.com'
+    )
+        .split(',')
+        .map(domain => domain.trim().toLowerCase())
+        .filter(Boolean);
+
+    function isAllowedHost(url) {
+        try {
+            const host = new URL(url).hostname.toLowerCase();
+
+            return allowedDomains.some(domain =>
+                host === domain || host.endsWith('.' + domain)
+            );
+        } catch (_) {
+            return false;
+        }
+    }
+
+    // Validate the original URL.
+    if (!isAllowedHost(parsed.toString())) {
+        const error = new Error(
+            `Unsupported video domain: ${parsed.hostname}`
+        );
         error.status = 400;
         throw error;
     }
+
+    // Apply the application's existing URL cleaning and rewrites.
     const cleaned = cleanUrlForScraping(parsed.toString());
-    if (!isSupportedHost(cleaned)) {
+
+    // Validate the rewritten URL too.
+    if (!isAllowedHost(cleaned)) {
         const error = new Error('The rewritten video domain is not supported.');
         error.status = 400;
         throw error;
