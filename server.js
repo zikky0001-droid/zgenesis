@@ -15,7 +15,6 @@ const path = require('path');
 const compression = require('compression');
 const helmet = require('helmet');
 const cors = require('cors');
-const archiver = require('archiver');
 const crypto = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 
