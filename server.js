@@ -16,11 +16,13 @@ const compression = require('compression');
 const helmet = require('helmet');
 const cors = require('cors');
 const archiver = require('archiver');
+const crypto = require('crypto');
+const { AsyncLocalStorage } = require('async_hooks');
 
 // ============================================
 // 1.5 🔐 ENV LOADING (local .env support)
 // ============================================
-// On Render, env vars are injected by the platform - nothing to do.
+// On hosted platforms, environment variables are injected by the platform - nothing to do.
 // Locally, a .env file is loaded if present. Real env vars always win.
 (function loadDotEnv() {
     try {
@@ -37,8 +39,7 @@ const archiver = require('archiver');
 })();
 
 const app = express();
-// Render terminates TLS/proxies requests before they reach Express. Trust one
-// proxy hop so req.ip resolves to the visitor rather than Render's proxy IP.
+// Trust the hosting platform's proxy hop so req.ip resolves to the visitor IP.
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 10000;
 
@@ -134,7 +135,7 @@ function envBool(name, fallback = false) {
 const _BASE   = envUrl('BASE_URL',   'https://amp.ccxx.com/',        { trailingSlash: true });
 const _SEARCH = envUrl('SEARCH_URL', 'https://amp.ccxx.com/search/', { trailingSlash: true });
 const _VIDEO  = envUrl('VIDEO_URL',  'https://www.ccxx.com/video-');
-const _API    = envUrl('API_URL',    'https://zgenesis.onrender.com');
+const _API    = envUrl('API_URL',    'https://zgenesis.vercel.app');
 
 const URLS = {
     BASE: _BASE.value,
@@ -174,10 +175,9 @@ const _DOMAINS = envList('SUPPORTED_DOMAINS', [
 ]);
 const SUPPORTED_DOMAINS = _DOMAINS.value;
 
-// ----- HOST REWRITES (alias domain -> real domain) -----
-// Default keeps your original behaviour: txnhh.com -> ccxx.com
-const _REWRITES = envPairs('HOST_REWRITES', [['txnhh.com', 'ccxx.com']]);
-const HOST_REWRITES = _REWRITES.value;
+// ----- BUILT-IN HOST ALIAS -----
+// No HOST_REWRITES environment variable is required. Preserve the existing alias behavior.
+const HOST_REWRITES = [['txnhh.com', 'ccxx.com']];
 
 // ----- OPTIONAL STRICT DOMAIN CHECK (off by default) -----
 // When true, /api/video/by-url only accepts hosts from SUPPORTED_DOMAINS
@@ -221,15 +221,33 @@ function describeMediaUrl(u) {
 // ----- CACHE CONSTANTS -----
 const CACHE = {
     TTL: 1 * 60 * 1000,           // 1 minute in milliseconds
-    CLEANUP_INTERVAL: 1 * 60 * 1000 // Clean expired every 1 minute
+    CLEANUP_INTERVAL: 1 * 60 * 1000 // Lazy cleanup check on requests
 };
 
 // ----- TIMEOUT CONSTANTS -----
 const TIMEOUTS = {
-    REQUEST: 30000,    // 30 seconds
-    SCRAPE: 30000,     // 30 seconds
-    DOWNLOAD: 60000    // 60 seconds
+    REQUEST: 30000,       // Maximum duration for one upstream request
+    SCRAPE: 165000,       // Overall incoming-request deadline (all retries included)
+    DOWNLOAD: 60000      // Maximum duration for one upstream download request
 };
+
+// One deadline is shared by every upstream request made during an incoming request.
+const requestContext = new AsyncLocalStorage();
+axios.interceptors.request.use(config => {
+    const context = requestContext.getStore();
+    if (!context) return config;
+
+    const remaining = context.deadlineAt - Date.now();
+    if (remaining <= 0 || context.controller.signal.aborted) {
+        throw new axios.CanceledError('Overall request deadline exceeded.');
+    }
+
+    const signals = [context.controller.signal, config.signal].filter(Boolean);
+    config.signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+    const existingTimeout = Number(config.timeout) > 0 ? Number(config.timeout) : TIMEOUTS.REQUEST;
+    config.timeout = Math.max(1, Math.min(existingTimeout, remaining));
+    return config;
+});
 
 // ----- LIMIT CONSTANTS -----
 const LIMITS = {
@@ -531,8 +549,7 @@ function clearCache() {
     console.log('🧹 Cache cleared');
 }
 
-function cleanExpiredCache() {
-    const now = Date.now();
+function cleanExpiredCache(now = Date.now()) {
     let count = 0;
     
     for (const [key, entry] of cache) {
@@ -554,8 +571,14 @@ function getCacheKey(url, params = {}) {
     return paramStr ? `${url}?${paramStr}` : url;
 }
 
-// ----- AUTO CLEANUP -----
-setInterval(cleanExpiredCache, CACHE.CLEANUP_INTERVAL);
+// Cleanup is request-triggered: no background interval is required on serverless instances.
+let lastCacheCleanup = 0;
+function cleanupCacheOnRequest() {
+    const now = Date.now();
+    if (now - lastCacheCleanup < CACHE.CLEANUP_INTERVAL) return;
+    lastCacheCleanup = now;
+    cleanExpiredCache(now);
+}
 
 // ============================================
 // 5. 🌐 SCRAPING LOGIC
@@ -1129,6 +1152,30 @@ async function downloadVideo(videoId, res) {
 // 7. 🗂️ EXPRESS SERVER SETUP
 // ============================================
 
+// ----- SERVERLESS REQUEST DEADLINE + LAZY CACHE CLEANUP -----
+app.use((req, res, next) => {
+    cleanupCacheOnRequest();
+    const controller = new AbortController();
+    const deadlineAt = Date.now() + TIMEOUTS.SCRAPE;
+    const timer = setTimeout(() => {
+        controller.abort(new Error('Overall request deadline exceeded.'));
+        if (res.headersSent) {
+            res.destroy();
+        } else if (!res.writableEnded) {
+            res.status(504).json({
+                success: false,
+                error: { code: 'REQUEST_TIMEOUT', message: 'The request exceeded the 165-second processing limit.' }
+            });
+        }
+    }, TIMEOUTS.SCRAPE);
+    res.once('finish', () => clearTimeout(timer));
+    res.once('close', () => {
+        clearTimeout(timer);
+        if (!res.writableEnded) controller.abort(new Error('Client disconnected.'));
+    });
+    requestContext.run({ controller, deadlineAt }, next);
+});
+
 // ----- SECURITY MIDDLEWARE -----
 
 app.use(helmet({
@@ -1163,84 +1210,157 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ----- STATIC FILES -----
-
-app.use(express.static(__dirname));
-app.use('/temp', express.static(PATHS.TEMP));
+// Vercel serves /public assets through its CDN. Express serves them locally only.
+const PUBLIC_DIR = path.join(__dirname, 'public');
+if (process.env.VERCEL !== '1') {
+    app.use(express.static(PUBLIC_DIR));
+    if (fs.existsSync(PATHS.TEMP)) app.use('/temp', express.static(PATHS.TEMP));
+}
 
 // ----- PUBLIC API RATE LIMITS ----
-// The playground calls /api/v1, so its requests are counted. Existing website
-// endpoints such as /api/home and /api/search do not use this limiter.
-// Render runs this in one Node process. For multiple Render instances, replace
-// this Map with a shared Redis store to keep counters consistent across instances.
+// Only /api/v1 is rate-limited. Redis keeps limits consistent across Vercel instances.
 const API_RATE_LIMITS = {
     minute: { limit: 40, windowMs: 60 * 1000 },
     hour: { limit: 2500, windowMs: 60 * 60 * 1000 }
 };
-const apiRateBuckets = new Map();
+const apiRateBuckets = new Map(); // Local-development fallback only.
+let lastLocalRateCleanup = 0;
+const UPSTASH_REDIS_REST_URL = cleanEnv('UPSTASH_REDIS_REST_URL').replace(/\/+$/, '');
+const UPSTASH_REDIS_REST_TOKEN = cleanEnv('UPSTASH_REDIS_REST_TOKEN');
+const REDIS_RATE_LIMIT_SCRIPT = `
+local minuteCount = redis.call('INCR', KEYS[1])
+if minuteCount == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+local minuteTtl = redis.call('PTTL', KEYS[1])
+local hourCount = redis.call('INCR', KEYS[2])
+if hourCount == 1 then redis.call('PEXPIRE', KEYS[2], ARGV[2]) end
+local hourTtl = redis.call('PTTL', KEYS[2])
+return { minuteCount, minuteTtl, hourCount, hourTtl }
+`;
 
 function getClientIp(req) {
     return String(req.ip || req.socket.remoteAddress || 'unknown').replace(/^::ffff:/, '');
 }
 
-function apiRateLimit(req, res, next) {
-    const now = Date.now();
-    const ip = getClientIp(req);
-    let record = apiRateBuckets.get(ip);
-    if (!record) {
-        record = { minute: { start: now, count: 0 }, hour: { start: now, count: 0 } };
-        apiRateBuckets.set(ip, record);
-    }
-
-    for (const key of ['minute', 'hour']) {
-        const config = API_RATE_LIMITS[key];
-        const bucket = record[key];
-        if (now - bucket.start >= config.windowMs) {
-            bucket.start = now;
-            bucket.count = 0;
+function cleanupLocalRateBuckets(now = Date.now()) {
+    if (now - lastLocalRateCleanup < 10 * 60 * 1000) return;
+    lastLocalRateCleanup = now;
+    for (const [ip, record] of apiRateBuckets) {
+        if (now - record.hour.start >= API_RATE_LIMITS.hour.windowMs &&
+            now - record.minute.start >= API_RATE_LIMITS.minute.windowMs) {
+            apiRateBuckets.delete(ip);
         }
-        bucket.count += 1;
     }
-
-    const minute = record.minute;
-    const hour = record.hour;
-    const minuteRemaining = Math.max(0, API_RATE_LIMITS.minute.limit - minute.count);
-    const hourRemaining = Math.max(0, API_RATE_LIMITS.hour.limit - hour.count);
-    const minuteReset = Math.max(1, Math.ceil((minute.start + API_RATE_LIMITS.minute.windowMs - now) / 1000));
-    const hourReset = Math.max(1, Math.ceil((hour.start + API_RATE_LIMITS.hour.windowMs - now) / 1000));
-
-    res.set({
-        'X-RateLimit-Minute-Limit': String(API_RATE_LIMITS.minute.limit),
-        'X-RateLimit-Minute-Remaining': String(minuteRemaining),
-        'X-RateLimit-Minute-Reset': String(minuteReset),
-        'X-RateLimit-Hour-Limit': String(API_RATE_LIMITS.hour.limit),
-        'X-RateLimit-Hour-Remaining': String(hourRemaining),
-        'X-RateLimit-Hour-Reset': String(hourReset),
-        'RateLimit-Policy': '40;w=60, 2500;w=3600'
-    });
-
-    // If both are exceeded, report the longer retry period.
-    if (minute.count > API_RATE_LIMITS.minute.limit || hour.count > API_RATE_LIMITS.hour.limit) {
-        const isHourly = hour.count > API_RATE_LIMITS.hour.limit;
-        const retryAfter = isHourly ? hourReset : minuteReset;
-        res.set('Retry-After', String(retryAfter));
-        return res.status(429).json({
-            success: false,
-            error: {
-                code: 'RATE_LIMIT_EXCEEDED',
-                message: isHourly
-                    ? 'Hourly API limit exceeded. Please retry after the reset.'
-                    : 'Per-minute API limit exceeded. Please retry after the reset.',
-                limit: isHourly ? API_RATE_LIMITS.hour.limit : API_RATE_LIMITS.minute.limit,
-                window: isHourly ? '1 hour' : '1 minute',
-                retryAfterSeconds: retryAfter
-            }
-        });
-    }
-    next();
 }
 
-// Pretty-print JSON responses for the public v1 API only. This is request-scoped
-// and does not change Express JSON formatting for the existing website routes.
+async function getSharedRateCounts(ip) {
+    if (!UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_REST_TOKEN) {
+        if (process.env.VERCEL === '1') {
+            const error = new Error('Shared Redis credentials are not configured.');
+            error.code = 'REDIS_NOT_CONFIGURED';
+            throw error; // apiRateLimit catches this and fails open on Vercel.
+        }
+        // Local development only: process-local fallback, not shared between instances.
+        const now = Date.now();
+        cleanupLocalRateBuckets(now);
+        let record = apiRateBuckets.get(ip);
+        if (!record) {
+            record = { minute: { start: now, count: 0 }, hour: { start: now, count: 0 } };
+            apiRateBuckets.set(ip, record);
+        }
+        for (const key of ['minute', 'hour']) {
+            const config = API_RATE_LIMITS[key];
+            if (now - record[key].start >= config.windowMs) record[key] = { start: now, count: 0 };
+            record[key].count += 1;
+        }
+        return {
+            minuteCount: record.minute.count,
+            minuteReset: Math.max(1, Math.ceil((record.minute.start + API_RATE_LIMITS.minute.windowMs - now) / 1000)),
+            hourCount: record.hour.count,
+            hourReset: Math.max(1, Math.ceil((record.hour.start + API_RATE_LIMITS.hour.windowMs - now) / 1000))
+        };
+    }
+
+    const ipHash = crypto.createHash('sha256').update(ip).digest('hex');
+    const minuteKey = `the-genesis:ratelimit:v1:${ipHash}:minute`;
+    const hourKey = `the-genesis:ratelimit:v1:${ipHash}:hour`;
+    const context = requestContext.getStore();
+    const timeoutSignal = AbortSignal.timeout(5000);
+    const signal = context
+        ? AbortSignal.any([context.controller.signal, timeoutSignal])
+        : timeoutSignal;
+
+    const response = await fetch(UPSTASH_REDIS_REST_URL, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify([
+            'EVAL', REDIS_RATE_LIMIT_SCRIPT, '2', minuteKey, hourKey,
+            String(API_RATE_LIMITS.minute.windowMs), String(API_RATE_LIMITS.hour.windowMs)
+        ]),
+        signal
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.error || !Array.isArray(payload.result)) {
+        throw new Error(payload.error || `Upstash Redis returned HTTP ${response.status}`);
+    }
+
+    const [minuteCount, minuteTtl, hourCount, hourTtl] = payload.result.map(Number);
+    return {
+        minuteCount,
+        minuteReset: Math.max(1, Math.ceil(minuteTtl / 1000)),
+        hourCount,
+        hourReset: Math.max(1, Math.ceil(hourTtl / 1000))
+    };
+}
+
+async function apiRateLimit(req, res, next) {
+    try {
+        const ip = getClientIp(req);
+        const counts = await getSharedRateCounts(ip);
+        const minuteRemaining = Math.max(0, API_RATE_LIMITS.minute.limit - counts.minuteCount);
+        const hourRemaining = Math.max(0, API_RATE_LIMITS.hour.limit - counts.hourCount);
+
+        res.set({
+            'X-RateLimit-Minute-Limit': String(API_RATE_LIMITS.minute.limit),
+            'X-RateLimit-Minute-Remaining': String(minuteRemaining),
+            'X-RateLimit-Minute-Reset': String(counts.minuteReset),
+            'X-RateLimit-Hour-Limit': String(API_RATE_LIMITS.hour.limit),
+            'X-RateLimit-Hour-Remaining': String(hourRemaining),
+            'X-RateLimit-Hour-Reset': String(counts.hourReset),
+            'RateLimit-Policy': '40;w=60, 2500;w=3600'
+        });
+
+        if (counts.minuteCount > API_RATE_LIMITS.minute.limit ||
+            counts.hourCount > API_RATE_LIMITS.hour.limit) {
+            const isHourly = counts.hourCount > API_RATE_LIMITS.hour.limit;
+            const retryAfter = isHourly ? counts.hourReset : counts.minuteReset;
+            res.set('Retry-After', String(retryAfter));
+            return res.status(429).json({
+                success: false,
+                error: {
+                    code: 'RATE_LIMIT_EXCEEDED',
+                    message: isHourly
+                        ? 'Hourly API limit exceeded. Please retry after the reset.'
+                        : 'Per-minute API limit exceeded. Please retry after the reset.',
+                    limit: isHourly ? API_RATE_LIMITS.hour.limit : API_RATE_LIMITS.minute.limit,
+                    window: isHourly ? '1 hour' : '1 minute',
+                    retryAfterSeconds: retryAfter
+                }
+            });
+        }
+        next();
+    } catch (error) {
+        // Fail-open: Redis outages must not take down the public API.
+        // Do not log credentials or request headers; only the sanitized error message is logged.
+        console.warn('⚠️ Shared API rate limiter unavailable; allowing request (fail-open):', String(error.message || 'Redis error').slice(0, 240));
+        res.set('X-RateLimit-Status', 'unavailable');
+        return next();
+    }
+}
+
+// Pretty-print JSON responses for the public v1 API only.
 function apiPrettyJson(req, res, next) {
     const originalJson = res.json;
     res.json = function prettyJson(body) {
@@ -1252,23 +1372,13 @@ function apiPrettyJson(req, res, next) {
     next();
 }
 
-// Only /api/v1 is rate-limited. 
+// Rate limiting remains restricted to /api/v1/*; website /api routes are unchanged.
 app.use('/api/v1', apiPrettyJson, apiRateLimit);
-
-// Keep the in-memory limiter bounded and clear stale visitor records.
-setInterval(() => {
-    const now = Date.now();
-    for (const [ip, record] of apiRateBuckets) {
-        if (now - record.hour.start >= API_RATE_LIMITS.hour.windowMs &&
-            now - record.minute.start >= API_RATE_LIMITS.minute.windowMs) {
-            apiRateBuckets.delete(ip);
-        }
-    }
-}, 10 * 60 * 1000).unref();
 
 // ----- DIRECTORY CREATION -----
 
 function ensureDirectories() {
+    if (process.env.VERCEL === '1') return;
     const dirs = [PATHS.TEMP, PATHS.CACHE, PATHS.DOWNLOADS, PATHS.LOGS];
     dirs.forEach(dir => {
         if (!fs.existsSync(dir)) {
@@ -1543,6 +1653,11 @@ async function getPublicVideoDetails(rawUrl) {
 
     return details;
 }
+
+app.get('/api/config', (req, res) => {
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json({ success: true, apiBaseUrl: URLS.API });
+});
 
 app.get('/api/v1/status', (req, res) => {
     res.json({ success: true, service: 'THE GENESIS API', version: '1.0.0', status: 'online', uptimeSeconds: Math.floor(process.uptime()) });
@@ -1861,26 +1976,25 @@ app.get('/api/cache-status', (req, res) => {
 // ============================================
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 app.get('/video', (req, res) => {
-    res.sendFile(path.join(__dirname, 'video.html'));
+    res.sendFile(path.join(PUBLIC_DIR, 'video.html'));
 });
 
 app.get('/api-docs', (req, res) => {
-    res.sendFile(path.join(__dirname, 'api.html'));
+    res.sendFile(path.join(PUBLIC_DIR, 'api.html'));
 });
 
 // Catch-all for SPA support
 app.get('*', (req, res) => {
-    // If requesting a file that exists, serve it
-    const filePath = path.join(__dirname, req.path);
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    // Preserve the existing SPA fallback while resolving files only inside public/.
+    const filePath = path.resolve(PUBLIC_DIR, `.${decodeURIComponent(req.path)}`);
+    if (filePath.startsWith(PUBLIC_DIR + path.sep) && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
         return res.sendFile(filePath);
     }
-    // Otherwise, redirect to home
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // ============================================
@@ -1921,7 +2035,7 @@ process.on('uncaughtException', (err) => {
 // ============================================
 
 function startServer() {
-    // Ensure directories exist
+    // Ensure local-development directories exist; Vercel uses its read-only deployment bundle.
     ensureDirectories();
     
     // Start server
@@ -1932,8 +2046,9 @@ function startServer() {
         console.log(`🚀 Server running on port: ${PORT}`);
         console.log(`📚 Started at: ${new Date().toISOString()}`);
         console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log(`📦 Cache TTL: ${CACHE.TTL / 60000} minutes`);
-        console.log('🚦 API limits: 40 requests/minute + 2,500 requests/hour per IP');
+        console.log(`📦 Cache TTL: ${CACHE.TTL / 60000} minutes (lazy cleanup)`);
+        console.log(`⏱️ Request deadline: ${TIMEOUTS.SCRAPE / 1000} seconds`);
+        console.log('🚦 API limits: /api/v1 only · 40/minute + 2,500/hour per IP');
         console.log('📖 API docs: /api-docs');
         console.log(`💾 Cache entries: ${cache.size}`);
         console.log('--------------------------------------------');
@@ -1943,7 +2058,7 @@ function startServer() {
         console.log(`   VIDEO_URL    [${_VIDEO.source}]: ${URLS.VIDEO}`);
         console.log(`   API_URL      [${_API.source}]: ${URLS.API}`);
         console.log(`   DOMAINS      [${_DOMAINS.source}]: ${SUPPORTED_DOMAINS.join(', ')}`);
-        console.log(`   HOST_REWRITES[${_REWRITES.source}]: ${HOST_REWRITES.map(p => p.join('=')).join(', ')}`);
+        console.log(`   HOST ALIASES: ${HOST_REWRITES.map(p => p.join('=')).join(', ')}`);
         console.log(`   DOMAIN CHECK: ${ENFORCE_DOMAIN_CHECK ? 'ON' : 'off'}`);
         console.log(`   DEBUG_MODE:   ${DEBUG_MODE ? 'ON (video logs + /api/debug/video)' : 'off'}`);
         console.log('============================================');
@@ -1961,8 +2076,11 @@ function startServer() {
     });
 }
 
-// Start the server
-startServer();
+// Export the Express app for Vercel; retain the existing local/Render startup.
+module.exports = app;
+if (process.env.VERCEL !== '1') {
+    startServer();
+}
 
 
 
