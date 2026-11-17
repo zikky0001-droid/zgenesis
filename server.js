@@ -1167,7 +1167,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 app.use('/temp', express.static(PATHS.TEMP));
 
-// ----- GLOBAL API RATE LIMITS (per visitor IP; applies to legacy + v1 + playground) -----
+// ----- PUBLIC API RATE LIMITS (v1 only; website routes are deliberately excluded) -----
+// The playground calls /api/v1, so its requests are counted. Existing website
+// endpoints such as /api/home and /api/search do not use this limiter.
 // Render runs this in one Node process. For multiple Render instances, replace
 // this Map with a shared Redis store to keep counters consistent across instances.
 const API_RATE_LIMITS = {
@@ -1237,7 +1239,21 @@ function apiRateLimit(req, res, next) {
     next();
 }
 
-app.use('/api', apiRateLimit);
+// Pretty-print JSON responses for the public v1 API only. This is request-scoped
+// and does not change Express JSON formatting for the existing website routes.
+function apiPrettyJson(req, res, next) {
+    const originalJson = res.json;
+    res.json = function prettyJson(body) {
+        const replacer = this.app.get('json replacer');
+        const bodyText = JSON.stringify(body, replacer, 2);
+        this.set('Content-Type', 'application/json; charset=utf-8');
+        return this.send(bodyText);
+    };
+    next();
+}
+
+// Only /api/v1 is rate-limited. Website endpoints under /api remain untouched.
+app.use('/api/v1', apiPrettyJson, apiRateLimit);
 
 // Keep the in-memory limiter bounded and clear stale visitor records.
 setInterval(() => {
@@ -1486,7 +1502,7 @@ app.get('/api/v1/limits', (req, res) => {
             perMinute: { limit: API_RATE_LIMITS.minute.limit, windowSeconds: 60, remaining: Number(res.getHeader('X-RateLimit-Minute-Remaining')) },
             perHour: { limit: API_RATE_LIMITS.hour.limit, windowSeconds: 3600, remaining: Number(res.getHeader('X-RateLimit-Hour-Remaining')) }
         },
-        note: 'Limits apply to all /api routes, including the website and API playground.'
+        note: 'Limits apply to /api/v1 endpoints, including requests made from the API playground. Existing website API routes are not included.'
     });
 });
 
