@@ -37,6 +37,9 @@ const archiver = require('archiver');
 })();
 
 const app = express();
+// Render terminates TLS/proxies requests before they reach Express. Trust one
+// proxy hop so req.ip resolves to the visitor rather than Render's proxy IP.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 10000;
 
 // ============================================
@@ -1164,6 +1167,89 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 app.use('/temp', express.static(PATHS.TEMP));
 
+// ----- GLOBAL API RATE LIMITS (per visitor IP; applies to legacy + v1 + playground) -----
+// Render runs this in one Node process. For multiple Render instances, replace
+// this Map with a shared Redis store to keep counters consistent across instances.
+const API_RATE_LIMITS = {
+    minute: { limit: 40, windowMs: 60 * 1000 },
+    hour: { limit: 2500, windowMs: 60 * 60 * 1000 }
+};
+const apiRateBuckets = new Map();
+
+function getClientIp(req) {
+    return String(req.ip || req.socket.remoteAddress || 'unknown').replace(/^::ffff:/, '');
+}
+
+function apiRateLimit(req, res, next) {
+    const now = Date.now();
+    const ip = getClientIp(req);
+    let record = apiRateBuckets.get(ip);
+    if (!record) {
+        record = { minute: { start: now, count: 0 }, hour: { start: now, count: 0 } };
+        apiRateBuckets.set(ip, record);
+    }
+
+    for (const key of ['minute', 'hour']) {
+        const config = API_RATE_LIMITS[key];
+        const bucket = record[key];
+        if (now - bucket.start >= config.windowMs) {
+            bucket.start = now;
+            bucket.count = 0;
+        }
+        bucket.count += 1;
+    }
+
+    const minute = record.minute;
+    const hour = record.hour;
+    const minuteRemaining = Math.max(0, API_RATE_LIMITS.minute.limit - minute.count);
+    const hourRemaining = Math.max(0, API_RATE_LIMITS.hour.limit - hour.count);
+    const minuteReset = Math.max(1, Math.ceil((minute.start + API_RATE_LIMITS.minute.windowMs - now) / 1000));
+    const hourReset = Math.max(1, Math.ceil((hour.start + API_RATE_LIMITS.hour.windowMs - now) / 1000));
+
+    res.set({
+        'X-RateLimit-Minute-Limit': String(API_RATE_LIMITS.minute.limit),
+        'X-RateLimit-Minute-Remaining': String(minuteRemaining),
+        'X-RateLimit-Minute-Reset': String(minuteReset),
+        'X-RateLimit-Hour-Limit': String(API_RATE_LIMITS.hour.limit),
+        'X-RateLimit-Hour-Remaining': String(hourRemaining),
+        'X-RateLimit-Hour-Reset': String(hourReset),
+        'RateLimit-Policy': '40;w=60, 2500;w=3600'
+    });
+
+    // If both are exceeded, report the longer retry period.
+    if (minute.count > API_RATE_LIMITS.minute.limit || hour.count > API_RATE_LIMITS.hour.limit) {
+        const isHourly = hour.count > API_RATE_LIMITS.hour.limit;
+        const retryAfter = isHourly ? hourReset : minuteReset;
+        res.set('Retry-After', String(retryAfter));
+        return res.status(429).json({
+            success: false,
+            error: {
+                code: 'RATE_LIMIT_EXCEEDED',
+                message: isHourly
+                    ? 'Hourly API limit exceeded. Please retry after the reset.'
+                    : 'Per-minute API limit exceeded. Please retry after the reset.',
+                limit: isHourly ? API_RATE_LIMITS.hour.limit : API_RATE_LIMITS.minute.limit,
+                window: isHourly ? '1 hour' : '1 minute',
+                retryAfterSeconds: retryAfter
+            }
+        });
+    }
+    next();
+}
+
+app.use('/api', apiRateLimit);
+
+// Keep the in-memory limiter bounded and clear stale visitor records.
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, record] of apiRateBuckets) {
+        if (now - record.hour.start >= API_RATE_LIMITS.hour.windowMs &&
+            now - record.minute.start >= API_RATE_LIMITS.minute.windowMs) {
+            apiRateBuckets.delete(ip);
+        }
+    }
+}, 10 * 60 * 1000).unref();
+
 // ----- DIRECTORY CREATION -----
 
 function ensureDirectories() {
@@ -1225,6 +1311,13 @@ app.get('/ping', (req, res) => {
         { method: 'GET', path: '/api/video/:id', description: 'Get video details' },
         { method: 'GET', path: '/api/stream/:id', description: 'Stream video' },
         { method: 'GET', path: '/api/download/:id', description: 'Download video' },
+        { method: 'GET', path: '/api/v1/search?q=', description: 'Public API search' },
+        { method: 'GET', path: '/api/v1/video?url=', description: 'Public API video details' },
+        { method: 'GET', path: '/api/v1/stream?url=', description: 'Public API stream link' },
+        { method: 'GET', path: '/api/v1/download?url=', description: 'Public API download link' },
+        { method: 'GET', path: '/api/v1/limits', description: 'Current rate-limit usage' },
+        { method: 'GET', path: '/api/v1/status', description: 'Public API status' },
+        { method: 'GET', path: '/api-docs', description: 'API documentation and playground' },
         { method: 'POST', path: '/api/clear-cache', description: 'Clear cache' },
         { method: 'GET', path: '/api/cache-status', description: 'Cache status' },
         { method: 'GET', path: '/', description: 'Homepage' },
@@ -1286,6 +1379,169 @@ app.get('/ping', (req, res) => {
     // Pretty print JSON response
     res.setHeader('Content-Type', 'application/json');
     res.status(200).json(response);
+});
+
+// ----- VERSIONED PUBLIC API -----
+function validatePublicVideoUrl(rawUrl) {
+    if (typeof rawUrl !== 'string' || !rawUrl.trim() || rawUrl.length > 2048) {
+        const error = new Error('A valid video page URL is required (maximum 2048 characters).');
+        error.status = 400;
+        throw error;
+    }
+    let parsed;
+    try { parsed = new URL(rawUrl.trim()); } catch (_) {
+        const error = new Error('The supplied URL is invalid.');
+        error.status = 400;
+        throw error;
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password ||
+        (parsed.port && !['80', '443'].includes(parsed.port))) {
+        const error = new Error('Only public HTTP/HTTPS video-page URLs are accepted.');
+        error.status = 400;
+        throw error;
+    }
+    if (!isSupportedHost(parsed.toString())) {
+        const error = new Error('Unsupported video domain.');
+        error.status = 400;
+        throw error;
+    }
+    const cleaned = cleanUrlForScraping(parsed.toString());
+    if (!isSupportedHost(cleaned)) {
+        const error = new Error('The rewritten video domain is not supported.');
+        error.status = 400;
+        throw error;
+    }
+    return cleaned;
+}
+
+async function fetchSupportedVideoPage(startUrl) {
+    // Follow redirects manually and re-validate every destination before making
+    // another outbound request. This prevents a supported source URL from
+    // redirecting the API fetcher to an unrelated/internal host.
+    let currentUrl = validatePublicVideoUrl(startUrl);
+    for (let hop = 0; hop <= 5; hop++) {
+        const response = await axios.get(currentUrl, {
+            headers: VIDEO_HEADERS,
+            timeout: TIMEOUTS.REQUEST,
+            maxRedirects: 0,
+            validateStatus: status => status >= 200 && status < 400
+        });
+        if (response.status >= 300 && response.status < 400) {
+            const location = response.headers && response.headers.location;
+            if (!location || hop === 5) throw new Error('Too many or invalid source redirects.');
+            currentUrl = validatePublicVideoUrl(new URL(location, currentUrl).toString());
+            continue;
+        }
+        return response.data;
+    }
+    throw new Error('Unable to follow source redirects safely.');
+}
+
+async function getPublicVideoDetails(rawUrl) {
+    const videoUrl = validatePublicVideoUrl(rawUrl);
+    const cacheKey = getCacheKey('v1-video-by-url', { url: videoUrl });
+    const cached = getCached(cacheKey);
+    if (cached) return cached;
+
+    const html = await fetchSupportedVideoPage(videoUrl);
+    let details = scrapeVideoDetails(html);
+    let finalPageUrl = videoUrl;
+
+    if (!details.videoUrl || details.videoUrl === '#') {
+        const altUrl = swapToVideoHost(videoUrl);
+        if (altUrl && isSupportedHost(altUrl)) {
+            try {
+                const alternateHtml = await fetchSupportedVideoPage(altUrl);
+                const alternateDetails = scrapeVideoDetails(alternateHtml);
+                if (alternateDetails.videoUrl && alternateDetails.videoUrl !== '#') {
+                    details = alternateDetails;
+                    finalPageUrl = altUrl;
+                }
+            } catch (error) {
+                debugLog(`V1 alternate host retry failed: ${error.message}`);
+            }
+        }
+    }
+
+    details.id = getVideoIdFromUrl(finalPageUrl) || 'unknown';
+    details.url = finalPageUrl;
+    if (!details.videoUrl || details.videoUrl === '#') {
+        const error = new Error('No playable stream was found for this video.');
+        error.status = 404;
+        throw error;
+    }
+    setCached(cacheKey, details);
+    return details;
+}
+
+app.get('/api/v1/status', (req, res) => {
+    res.json({ success: true, service: 'THE GENESIS API', version: '1.0.0', status: 'online', uptimeSeconds: Math.floor(process.uptime()) });
+});
+
+app.get('/api/v1/limits', (req, res) => {
+    res.json({
+        success: true,
+        scope: 'per IP address',
+        limits: {
+            perMinute: { limit: API_RATE_LIMITS.minute.limit, windowSeconds: 60, remaining: Number(res.getHeader('X-RateLimit-Minute-Remaining')) },
+            perHour: { limit: API_RATE_LIMITS.hour.limit, windowSeconds: 3600, remaining: Number(res.getHeader('X-RateLimit-Hour-Remaining')) }
+        },
+        note: 'Limits apply to all /api routes, including the website and API playground.'
+    });
+});
+
+app.get('/api/v1/search', async (req, res) => {
+    try {
+        const query = String(req.query.q || '').trim();
+        if (query.length < 2 || query.length > 120) {
+            return res.status(400).json({ success: false, error: { code: 'INVALID_QUERY', message: 'q must contain between 2 and 120 characters.' } });
+        }
+        const cacheKey = getCacheKey('v1-search', { q: query.toLowerCase() });
+        let data = getCached(cacheKey);
+        if (!data) {
+            data = await scrapeSearch(query);
+            setCached(cacheKey, data);
+        }
+        res.json({ success: true, ...data });
+    } catch (error) {
+        console.error('V1 search error:', error.message);
+        res.status(500).json({ success: false, error: { code: 'SEARCH_FAILED', message: 'Search could not be completed.' } });
+    }
+});
+
+app.get('/api/v1/video', async (req, res) => {
+    try {
+        if (!req.query.url) return res.status(400).json({ success: false, error: { code: 'URL_REQUIRED', message: 'Pass a video page URL using the url parameter.' } });
+        const details = await getPublicVideoDetails(String(req.query.url));
+        res.json({ success: true, video: details });
+    } catch (error) {
+        const status = error.status || 502;
+        res.status(status).json({ success: false, error: { code: status === 404 ? 'VIDEO_NOT_FOUND' : status === 400 ? 'INVALID_URL' : 'VIDEO_LOOKUP_FAILED', message: status < 500 ? error.message : 'Unable to retrieve video details from the source.' } });
+    }
+});
+
+app.get('/api/v1/stream', async (req, res) => {
+    try {
+        if (!req.query.url) return res.status(400).json({ success: false, error: { code: 'URL_REQUIRED', message: 'Pass a video page URL using the url parameter.' } });
+        const details = await getPublicVideoDetails(String(req.query.url));
+        res.json({ success: true, streamUrl: details.videoUrl, expiresAt: null, sourcePage: details.url, note: 'The upstream host controls signed-link expiry; no reliable expiry timestamp was exposed.' });
+    } catch (error) {
+        const status = error.status || 502;
+        res.status(status).json({ success: false, error: { code: status === 404 ? 'VIDEO_NOT_FOUND' : status === 400 ? 'INVALID_URL' : 'STREAM_LOOKUP_FAILED', message: status < 500 ? error.message : 'Unable to retrieve a stream link from the source.' } });
+    }
+});
+
+app.get('/api/v1/download', async (req, res) => {
+    try {
+        if (!req.query.url) return res.status(400).json({ success: false, error: { code: 'URL_REQUIRED', message: 'Pass a video page URL using the url parameter.' } });
+        const details = await getPublicVideoDetails(String(req.query.url));
+        const downloadUrl = details.downloadUrl && details.downloadUrl !== '#' ? details.downloadUrl : details.videoUrl;
+        if (String(req.query.redirect).toLowerCase() === 'true') return res.redirect(302, downloadUrl);
+        res.json({ success: true, downloadUrl, sourcePage: details.url, redirectUrl: `${URLS.API}/api/v1/download?url=${encodeURIComponent(details.url)}&redirect=true`, note: 'Use redirect=true to send a browser directly to the upstream download URL.' });
+    } catch (error) {
+        const status = error.status || 502;
+        res.status(status).json({ success: false, error: { code: status === 404 ? 'VIDEO_NOT_FOUND' : status === 400 ? 'INVALID_URL' : 'DOWNLOAD_LOOKUP_FAILED', message: status < 500 ? error.message : 'Unable to retrieve a download link from the source.' } });
+    }
 });
 
 // ----- HOME ROUTE -----
@@ -1560,6 +1816,10 @@ app.get('/video', (req, res) => {
     res.sendFile(path.join(__dirname, 'video.html'));
 });
 
+app.get('/api-docs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'api.html'));
+});
+
 // Catch-all for SPA support
 app.get('*', (req, res) => {
     // If requesting a file that exists, serve it
@@ -1621,6 +1881,8 @@ function startServer() {
         console.log(`📚 Started at: ${new Date().toISOString()}`);
         console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
         console.log(`📦 Cache TTL: ${CACHE.TTL / 60000} minutes`);
+        console.log('🚦 API limits: 40 requests/minute + 2,500 requests/hour per IP');
+        console.log('📖 API docs: /api-docs');
         console.log(`💾 Cache entries: ${cache.size}`);
         console.log('--------------------------------------------');
         console.log('⚙️  Config (env or default):');

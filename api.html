@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="THE GENESIS free public anime search, stream-link and download-link API documentation and playground.">
+  <title>THE GENESIS API — Documentation & Playground</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    :root{--bg:#090b12;--panel:#111522;--panel2:#171d2c;--text:#f3f5fb;--muted:#9aa4b8;--line:#252d40;--primary:#8b5cf6;--accent:#22d3ee;--good:#22c55e;--warn:#f59e0b;--bad:#ef4444;--radius:16px}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 12% 0%,#21133b 0,transparent 32%),var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;line-height:1.6}
+    a{color:inherit;text-decoration:none}.navbar{height:72px;display:flex;align-items:center;justify-content:space-between;padding:0 max(5%,calc((100% - 1180px)/2));border-bottom:1px solid var(--line);background:rgba(9,11,18,.88);backdrop-filter:blur(16px);position:sticky;top:0;z-index:10}
+    .brand{font-weight:800;letter-spacing:.5px}.brand b{color:var(--accent)}.navlinks{display:flex;gap:24px;color:var(--muted);font-size:14px}.navlinks a:hover,.navlinks a.active{color:var(--text)}.menu{display:none;background:none;border:0;color:var(--text);font-size:22px}
+    .wrap{max-width:1180px;margin:auto;padding:42px 22px 80px}.hero{padding:38px 0 30px}.eyebrow{color:var(--accent);font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase}.hero h1{font-size:clamp(34px,6vw,58px);line-height:1.08;margin:12px 0}.hero p{max-width:720px;color:var(--muted);font-size:16px}.chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 12px;color:#cbd5e1;font-size:12px}
+    .layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:26px;align-items:start}.sidebar{position:sticky;top:96px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}.sidebar strong{display:block;margin:3px 8px 10px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}.sidebar a{display:block;padding:9px 10px;border-radius:9px;color:var(--muted);font-size:13px}.sidebar a:hover{background:var(--panel2);color:var(--text)}
+    section.doc{margin-bottom:24px;background:rgba(17,21,34,.88);border:1px solid var(--line);border-radius:var(--radius);padding:24px;scroll-margin-top:94px}.doc h2{font-size:22px;margin:0 0 8px}.doc h3{font-size:16px;margin:22px 0 8px}.muted{color:var(--muted)}.endpoint{border:1px solid var(--line);border-radius:12px;margin:14px 0;overflow:hidden;background:#0d111c}.ephead{display:flex;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}.method{font-size:11px;font-weight:800;background:#123b2a;color:#86efac;padding:4px 8px;border-radius:6px}.path{font:600 13px ui-monospace,monospace;overflow-wrap:anywhere}.epbody{padding:14px;color:var(--muted);font-size:13px}.epbody code,.inlinecode{color:#c4b5fd;font-family:ui-monospace,monospace}.code{position:relative;background:#080b13;border:1px solid #222b3d;border-radius:10px;padding:14px;overflow:auto;color:#cbd5e1;font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}.copy{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer}.toolbar{display:flex;justify-content:flex-end;margin:8px 0}
+    .limits{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}.limit{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px}.limit b{display:block;font-size:27px}.limit span{color:var(--muted);font-size:12px}
+    .playgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:7px}.field label{font-size:12px;color:var(--muted);font-weight:600}.field input,.field select{width:100%;padding:12px;background:#090d17;border:1px solid var(--line);border-radius:9px;color:var(--text);font:inherit;outline:none}.field input:focus,.field select:focus{border-color:var(--primary)}.wide{grid-column:1/-1}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}.btn{border:0;border-radius:9px;padding:11px 16px;background:linear-gradient(135deg,var(--primary),#6d4bd1);color:white;font-weight:700;cursor:pointer}.btn.secondary{background:var(--panel2);border:1px solid var(--line)}.btn:disabled{opacity:.5;cursor:wait}.resulthead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px}.status{font-size:12px;color:var(--muted)}.usage{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:10px}.usage b{color:var(--text)}.note{border-left:3px solid var(--warn);padding:10px 13px;background:#241b0c;color:#e7d5ad;border-radius:0 8px 8px 0;font-size:13px;margin-top:14px}.footer{color:var(--muted);text-align:center;font-size:12px;margin-top:40px}
+    @media(max-width:760px){.layout{grid-template-columns:1fr}.sidebar{position:static;display:flex;gap:5px;overflow:auto}.sidebar strong{display:none}.sidebar a{white-space:nowrap}.navlinks{display:none;position:absolute;top:71px;left:0;right:0;background:var(--panel);padding:14px 22px;flex-direction:column;gap:12px;border-bottom:1px solid var(--line)}.navlinks.open{display:flex}.menu{display:block}.wrap{padding:25px 15px 60px}.limits,.playgrid{grid-template-columns:1fr}.wide{grid-column:auto}section.doc{padding:18px}.hero{padding-top:25px}}
+  </style>
+</head>
+<body>
+  <nav class="navbar"><a class="brand" href="/">THE <b>GENESIS</b></a><div class="navlinks" id="navlinks"><a href="/">Home</a><a class="active" href="/api-docs">API Docs</a><a href="#playground">Playground</a></div><button class="menu" id="menu" aria-label="Toggle navigation"><i class="fa-solid fa-bars"></i></button></nav>
+  <main class="wrap">
+    <header class="hero"><div class="eyebrow">Developer platform · v1</div><h1>THE GENESIS <span style="color:var(--accent)">API</span></h1><p>A free, public API for searching the catalogue and resolving video stream and download links. No API key, subscription or payment card required.</p><div class="chips"><span class="chip"><i class="fa-solid fa-unlock"></i> No API key</span><span class="chip"><i class="fa-solid fa-gift"></i> Free access</span><span class="chip"><i class="fa-solid fa-gauge-high"></i> 40/min · 2,500/hour per IP</span></div></header>
+    <div class="layout">
+      <aside class="sidebar"><strong>On this page</strong><a href="#overview">Overview</a><a href="#limits">Rate limits</a><a href="#search">Search endpoint</a><a href="#video">Video details</a><a href="#stream">Stream link</a><a href="#download">Download link</a><a href="#errors">Errors</a><a href="#playground">Playground</a></aside>
+      <div>
+        <section class="doc" id="overview"><h2>Overview</h2><p class="muted">Base URL</p><div class="code" id="baseUrl"></div><p class="muted">All endpoints use HTTPS and return JSON unless the download endpoint is called with <code class="inlinecode">redirect=true</code>. Requests from the website itself and the playground share the same per-IP limits as external API clients.</p><h3>Quick example</h3><div class="code">GET /api/v1/search?q=one%20piece</div><div class="note">Only use the API with video pages and content you are authorized to access. The API resolves links from the configured supported source domains; it is not a general-purpose URL fetcher.</div></section>
+        <section class="doc" id="limits"><h2>Rate limits</h2><p class="muted">Limits are applied to each visitor IP address across every <code class="inlinecode">/api</code> route, including the existing website endpoints and this playground.</p><div class="limits"><div class="limit"><b>40 <small style="font-size:14px">requests</small></b><span>Per minute · per IP</span></div><div class="limit"><b>2,500 <small style="font-size:14px">requests</small></b><span>Per hour · per IP</span></div></div><p class="muted">When a limit is exceeded, the API responds with HTTP <code class="inlinecode">429</code> and a <code class="inlinecode">Retry-After</code> header. Rate-limit headers report remaining requests and reset times. The current Render setup uses an in-memory counter; counters reset when the service restarts and are not shared between multiple instances.</p></section>
+        <section class="doc" id="search"><h2>1. Search videos</h2><div class="endpoint"><div class="ephead"><span class="method">GET</span><span class="path">/api/v1/search?q={query}</span></div><div class="epbody">Search the configured catalogue source. <b>Required:</b> <code>q</code> (2–120 characters). Returns the scraped video results and source metadata.</div></div><div class="code">curl "https://YOUR-DOMAIN/api/v1/search?q=one%20piece"</div></section>
+        <section class="doc" id="video"><h2>2. Get video details</h2><div class="endpoint"><div class="ephead"><span class="method">GET</span><span class="path">/api/v1/video?url={videoPageUrl}</span></div><div class="epbody">Resolve a supported video page and return its metadata, stream URL, download URL and related information. The URL must belong to one of the configured supported domains.</div></div><div class="code">curl "https://YOUR-DOMAIN/api/v1/video?url=https%3A%2F%2Fwww.ccxx.com%2Fvideo-EXAMPLE"</div></section>
+        <section class="doc" id="stream"><h2>3. Get stream link</h2><div class="endpoint"><div class="ephead"><span class="method">GET</span><span class="path">/api/v1/stream?url={videoPageUrl}</span></div><div class="epbody">Returns a direct upstream stream URL in JSON. Signed media URLs may expire; the source controls their lifetime and the API does not invent an expiry timestamp.</div></div><div class="code">curl "https://YOUR-DOMAIN/api/v1/stream?url=ENCODED_VIDEO_PAGE_URL"</div></section>
+        <section class="doc" id="download"><h2>4. Get or open download link</h2><div class="endpoint"><div class="ephead"><span class="method">GET</span><span class="path">/api/v1/download?url={videoPageUrl}</span></div><div class="epbody">Returns a JSON download URL by default. Add <code>redirect=true</code> to redirect the browser to the upstream download URL, allowing the source server to handle the actual file transfer.</div></div><div class="code"># JSON response
+curl "https://YOUR-DOMAIN/api/v1/download?url=ENCODED_VIDEO_PAGE_URL"
+
+# Browser redirect to the upstream file
+https://YOUR-DOMAIN/api/v1/download?url=ENCODED_VIDEO_PAGE_URL&redirect=true</div><p class="muted">The Genesis server resolves the link; it does not proxy or store the video file for this v1 endpoint.</p></section>
+        <section class="doc" id="errors"><h2>Errors and response codes</h2><p class="muted"><code>400</code> invalid/missing input · <code>404</code> video or stream not found · <code>429</code> rate limit exceeded · <code>500/502</code> upstream or server failure.</p><div class="code">{
+  "success": false,
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Per-minute API limit exceeded. Please retry after the reset.",
+    "limit": 40,
+    "window": "1 minute",
+    "retryAfterSeconds": 24
+  }
+}</div></section>
+        <section class="doc" id="playground"><h2>API Playground</h2><p class="muted">Test the live API from this page. Every Send action counts toward the same rate limits as other API requests.</p>
+          <div class="playgrid"><div class="field"><label for="endpoint">Endpoint</label><select id="endpoint"><option value="search">Search videos</option><option value="video">Video details</option><option value="stream">Stream link</option><option value="download">Download link</option><option value="limits">My rate limits</option><option value="status">API status</option></select></div><div class="field" id="queryField"><label for="query">Search query</label><input id="query" placeholder="e.g. One Piece" maxlength="120"></div><div class="field wide" id="urlField" style="display:none"><label for="videoUrl">Video page URL (supported source domain)</label><input id="videoUrl" type="url" placeholder="https://www.ccxx.com/video-..."></div></div>
+          <div class="actions"><button class="btn" id="send"><i class="fa-solid fa-paper-plane"></i> Send request</button><button class="btn secondary" id="openDownload" style="display:none"><i class="fa-solid fa-download"></i> Open download</button><button class="btn secondary" id="copyRequest"><i class="fa-regular fa-copy"></i> Copy cURL</button></div>
+          <div class="resulthead"><b>Response</b><span class="status" id="status">Ready</span></div><div class="code" id="output">Choose an endpoint and send a request to see its response.</div><div class="usage"><span>Minute remaining: <b id="minuteRemaining">—</b></span><span>Hourly remaining: <b id="hourRemaining">—</b></span></div>
+        </section>
+      </div>
+    </div>
+    <footer class="footer">THE GENESIS API · Free public access · By DEV ZIKKY TECH</footer>
+  </main>
+<script>
+(() => {
+  const base = window.location.origin;
+  const $ = id => document.getElementById(id);
+  $('baseUrl').textContent = base;
+  const endpoint = $('endpoint');
+  let lastRequest = '';
+  function updateFields(){
+    const value = endpoint.value;
+    $('queryField').style.display = value === 'search' ? '' : 'none';
+    $('urlField').style.display = ['video','stream','download'].includes(value) ? '' : 'none';
+    $('openDownload').style.display = value === 'download' ? '' : 'none';
+  }
+  function buildUrl(redirect=false){
+    const value = endpoint.value;
+    if(value === 'search') return base + '/api/v1/search?q=' + encodeURIComponent($('query').value.trim());
+    if(['video','stream','download'].includes(value)) return base + '/api/v1/' + value + '?url=' + encodeURIComponent($('videoUrl').value.trim()) + (redirect && value === 'download' ? '&redirect=true' : '');
+    return base + '/api/v1/' + value;
+  }
+  function updateUsage(response){
+    const m=response.headers.get('X-RateLimit-Minute-Remaining');
+    const h=response.headers.get('X-RateLimit-Hour-Remaining');
+    if(m!==null)$('minuteRemaining').textContent=m;
+    if(h!==null)$('hourRemaining').textContent=h;
+  }
+  endpoint.addEventListener('change',updateFields); updateFields();
+  $('send').addEventListener('click',async()=>{
+    const value=endpoint.value;
+    if(value==='search' && $('query').value.trim().length<2){$('status').textContent='Enter at least 2 search characters';return;}
+    if(['video','stream','download'].includes(value) && !$('videoUrl').value.trim()){$('status').textContent='Enter a video page URL';return;}
+    const url=buildUrl(); lastRequest=url; $('send').disabled=true; $('status').textContent='Sending…'; $('output').textContent='Loading response…';
+    try{
+      const response=await fetch(url,{headers:{Accept:'application/json'}}); updateUsage(response);
+      const text=await response.text(); let body; try{body=JSON.parse(text)}catch(_){body=text}
+      $('status').textContent='HTTP '+response.status+' '+response.statusText;
+      $('output').textContent=typeof body==='string'?body:JSON.stringify(body,null,2);
+      if(response.status===429)$('status').textContent+=' · Rate limit reached';
+    }catch(error){$('status').textContent='Request failed';$('output').textContent=error.message+'\nCheck your connection and try again.';}
+    finally{$('send').disabled=false;}
+  });
+  $('openDownload').addEventListener('click',()=>{if(!$('videoUrl').value.trim()){$('status').textContent='Enter a video page URL';return;}window.open(buildUrl(true),'_blank','noopener');});
+  $('copyRequest').addEventListener('click',async()=>{
+    if(!lastRequest)lastRequest=buildUrl();
+    const command='curl -H "Accept: application/json" '+JSON.stringify(lastRequest);
+    try{await navigator.clipboard.writeText(command);$('status').textContent='cURL copied';}catch(_){$('status').textContent='Clipboard unavailable';}
+  });
+  $('menu').addEventListener('click',()=>$('navlinks').classList.toggle('open'));
+  $('navlinks').querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>$('navlinks').classList.remove('open')));
+})();
+</script>
+</body>
+</html>
