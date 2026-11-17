@@ -128,9 +128,9 @@ function envBool(name, fallback = false) {
 }
 
 // ----- URL CONSTANTS (from env, defaults = your original values) -----
-const _BASE   = envUrl('BASE_URL',   'https://amp.xnxx.com/',        { trailingSlash: true });
-const _SEARCH = envUrl('SEARCH_URL', 'https://amp.xnxx.com/search/', { trailingSlash: true });
-const _VIDEO  = envUrl('VIDEO_URL',  'https://www.xnxx.com/video-');
+const _BASE   = envUrl('BASE_URL',   'https://amp.ccxx.com/',        { trailingSlash: true });
+const _SEARCH = envUrl('SEARCH_URL', 'https://amp.ccxx.com/search/', { trailingSlash: true });
+const _VIDEO  = envUrl('VIDEO_URL',  'https://www.ccxx.com/video-');
 const _API    = envUrl('API_URL',    'https://zgenesis.onrender.com');
 
 const URLS = {
@@ -143,19 +143,37 @@ const URLS = {
 // Origin used to complete relative thumbnail / video links
 const BASE_ORIGIN = new URL(URLS.BASE).origin;
 
+// Origin of the real video pages (taken from VIDEO_URL) - related-video links use this
+const VIDEO_ORIGIN = new URL(URLS.VIDEO).origin;
+
+// If a link points at another host (e.g. the AMP host), return the same path on the
+// VIDEO_URL host so we can retry there. Returns null if already on that host.
+function swapToVideoHost(url) {
+    try {
+        const u = new URL(url);
+        const target = new URL(URLS.VIDEO);
+        if (u.host === target.host) return null;
+        u.protocol = target.protocol;
+        u.host = target.host;
+        return u.toString();
+    } catch (e) {
+        return null;
+    }
+}
+
 // ----- SUPPORTED DOMAINS (from env, comma-separated) -----
 const _DOMAINS = envList('SUPPORTED_DOMAINS', [
-    'amp.xnxx.com',
-    'xnxx.com',
-    'xnhh.com',
+    'amp.ccxx.com',
+    'ccxx.com',
+    'cchh.com',
     'thnxx.com',
     'txnhh.com'
 ]);
 const SUPPORTED_DOMAINS = _DOMAINS.value;
 
 // ----- HOST REWRITES (alias domain -> real domain) -----
-// Default keeps your original behaviour: txnhh.com -> xnxx.com
-const _REWRITES = envPairs('HOST_REWRITES', [['txnhh.com', 'xnxx.com']]);
+// Default keeps your original behaviour: txnhh.com -> ccxx.com
+const _REWRITES = envPairs('HOST_REWRITES', [['txnhh.com', 'ccxx.com']]);
 const HOST_REWRITES = _REWRITES.value;
 
 // ----- OPTIONAL STRICT DOMAIN CHECK (off by default) -----
@@ -458,7 +476,7 @@ function cleanUrlForScraping(url) {
         // Remove trailing slash
         cleanUrl = cleanUrl.replace(/\/$/, '');
         
-        // Apply host rewrites (default: txnhh.com -> xnxx.com)
+        // Apply host rewrites (default: txnhh.com -> ccxx.com)
         for (const [from, to] of HOST_REWRITES) {
             cleanUrl = cleanUrl.split(from).join(to);
         }
@@ -836,7 +854,7 @@ if (jsonLdMatch) {
                 const securePart = jsonData.contentUrl.split('?')[1];
                 
                 if (baseUrl && securePart) {
-                    details.downloadUrl = `${baseUrl}?${securePart}&download=xnxx_${filename}_SD.mp4`;
+                    details.downloadUrl = `${baseUrl}?${securePart}&download=ccxx_${filename}_SD.mp4`;
                 } else {
                     details.downloadUrl = jsonData.contentUrl;
                 }
@@ -952,7 +970,7 @@ if (relatedMatch) {
                         
                         let fullUrl = relUrl || '#';
                         if (fullUrl && !fullUrl.startsWith('http')) {
-                            fullUrl = `${BASE_ORIGIN}${fullUrl}`;
+                            fullUrl = `${VIDEO_ORIGIN}${fullUrl}`;
                         }
                         
                         details.relatedVideos.push({
@@ -1352,7 +1370,28 @@ app.get('/api/video/by-url', async (req, res) => {
 
         // Fetch and scrape the video page using the cleaned URL
         const html = await fetchVideoPage(videoUrl);
-        const details = scrapeVideoDetails(html);
+        let details = scrapeVideoDetails(html);
+
+        // 🔁 Page had no playable link (e.g. AMP/other host)? Retry on the VIDEO_URL host
+        if (!details.videoUrl || details.videoUrl === '#') {
+            const altUrl = swapToVideoHost(videoUrl);
+            if (altUrl) {
+                debugLog(`🔁 No video link on this host. Retrying on video host: ${altUrl}`);
+                try {
+                    const html2 = await fetchVideoPage(altUrl);
+                    const details2 = scrapeVideoDetails(html2);
+                    if (details2.videoUrl && details2.videoUrl !== '#') {
+                        details = details2;
+                        videoUrl = altUrl;
+                        debugLog('🔁 Retry succeeded - using video-host page');
+                    } else {
+                        debugLog('🔁 Retry also had no video link');
+                    }
+                } catch (retryErr) {
+                    debugLog(`🔁 Retry failed: ${retryErr.message}`);
+                }
+            }
+        }
 
         // Extract video ID from URL
         const match = videoUrl.match(/video-([a-zA-Z0-9]+)/);

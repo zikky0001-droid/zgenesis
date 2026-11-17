@@ -922,8 +922,6 @@
                 <video 
                     id="mainVideo"
                     class="video-player" 
-                    src=""
-                    poster=""
                     controls
                     preload="metadata"
                     playsinline
@@ -1085,7 +1083,7 @@ async function loadVideoByUrl(videoUrl) {
         showToast('Loading video...', 'info');
         
         // Send the full URL to the server
-        const response = await fetch(`${API_BASE}/api/video/by-url?url=${encodeURIComponent(videoUrl)}`);
+        const response = await fetchWithTimeout(`${API_BASE}/api/video/by-url?url=${encodeURIComponent(videoUrl)}`);
         if (!response.ok) await throwApiError(response);
         const video = await response.json();
         
@@ -1105,7 +1103,7 @@ async function loadVideoDetails(videoId) {
         showToast('Loading video...', 'info');
         
         // ✅ CORRECT: Video API call
-        const response = await fetch(`${API_BASE}/api/video/${encodeURIComponent(videoId)}`);
+        const response = await fetchWithTimeout(`${API_BASE}/api/video/${encodeURIComponent(videoId)}`);
         if (!response.ok) await throwApiError(response);
         const video = await response.json();
         
@@ -1116,6 +1114,20 @@ async function loadVideoDetails(videoId) {
         console.error('Error loading video:', error);
         showToast('Failed to load video', 'error');
         showError('Failed to load video', error.message || 'Please try again later.');
+    }
+}
+
+// ============== FETCH WITH TIMEOUT ==============
+async function fetchWithTimeout(url, ms = 70000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    try {
+        return await fetch(url, { signal: controller.signal });
+    } catch (err) {
+        if (err.name === 'AbortError') throw new Error('Request timed out - the server took too long. Please try again.');
+        throw err;
+    } finally {
+        clearTimeout(timer);
     }
 }
 
@@ -1226,15 +1238,17 @@ function displayVideo(video) {
     
     // Stream Button
     if (el.streamBtn && el.player) {
+        const hasLink = video.videoUrl && video.videoUrl !== '#';
         el.streamBtn.onclick = () => {
-            const p = el.player.play();
-            if (p && p.catch) {
-                p.catch(err => {
-                    console.warn('Play blocked:', err);
-                    showToast('Tap the play button on the player', 'info');
-                });
+            if (!hasLink) {
+                showToast('No playable video link was found', 'error');
+                return;
             }
+            try { el.player.pause(); } catch (e) {}
+            // Opens the video in a new page (browser's own full-page player)
+            window.open(video.videoUrl, '_blank', 'noopener,noreferrer');
         };
+        el.streamBtn.style.opacity = hasLink ? '1' : '0.5';
     }
     
     // Related Videos
@@ -1353,6 +1367,8 @@ function setupEventListeners() {
         });
         
         el.player.addEventListener('error', (e) => {
+            // Ignore the browser's "empty source" error before we've set a real link
+            if (!el.player.getAttribute('src')) return;
             const err = el.player.error;
             const code = err ? err.code : 0;
             const reasons = {
@@ -1416,9 +1432,9 @@ function showToast(message, type = 'info') {
     container.appendChild(toast);
     
     setTimeout(() => {
-        toast.style.animation = 'fadeOut 0.5s ease';
-        setTimeout(() => toast.remove(), 500);
-    }, 4500);
+        toast.style.animation = 'fadeOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
 }
 
 console.log('🎬 Video Player loaded successfully!');
