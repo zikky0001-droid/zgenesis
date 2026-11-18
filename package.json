@@ -1,7 +1,7 @@
 {
   "name": "the-genesis",
   "version": "1.0.0",
-  "description": "🔥 The Genesis - Anime Downloader by Dev Zikky Tech",
+  "description": "🔥 The Genesis - C*RN Downloader by Dev Zikky Tech",
   "main": "server.js",
   "engines": {
     "node": "22.x"
@@ -25,12 +25,12 @@
     "nodemon": "^3.1.10"
   },
   "keywords": [
-    "anime",
+    "c*rn",
     "downloader",
     "video",
     "streaming",
     "scraper",
-    "manga",
+    "anime",
     "thnxx",
     "the-genesis",
     "dev-zikky-tech"

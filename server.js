@@ -1,5 +1,5 @@
 // ============================================
-// 🔥 THE GENESIS - ANIME DOWNLOADER
+// 🔥 THE GENESIS - C*RN DOWNLOADER
 // 📚 SERVER.JS - COMPLETE BACKEND
 // 👨‍💻 By Dev Zikky Tech
 // ============================================
@@ -2082,7 +2082,7 @@ function startServer() {
     app.listen(PORT, () => {
         if (DEBUG_LOGS) {
             console.log('============================================');
-            console.log('🔥 THE GENESIS - ANIME DOWNLOADER');
+            console.log('🔥 THE GENESIS - C*RN DOWNLOADER');
             console.log('============================================');
             console.log(`🚀 Server running on port: ${PORT}`);
             console.log(`📚 Started at: ${new Date().toISOString()}`);
