@@ -188,6 +188,10 @@ const _DOMAINS = envList('SUPPORTED_DOMAINS', [
 ]);
 const SUPPORTED_DOMAINS = _DOMAINS.value;
 
+// Match the working Render deployment: domain enforcement is opt-in and defaults
+// to off. Do not require an additional Vercel environment variable.
+const ENFORCE_DOMAIN_CHECK = false;
+
 // ----- BUILT-IN HOST ALIAS -----
 // No HOST_REWRITES environment variable is required. Preserve the existing alias behavior.
 const HOST_REWRITES = [['txnhh.com', 'ccxx.com']];
@@ -1599,9 +1603,9 @@ async function fetchSupportedVideoPage(startUrl) {
     throw new Error('Unable to follow source redirects safely.');
 }
 
-// Both /api/video/by-url and the versioned public API now share URL cleaning,
-// cache handling, detail scraping, and alternate-host fallback. The public API
-// supplies its redirect-safe fetcher; the website keeps its existing fetcher.
+// Match the working Render behavior: the website and public API share the same
+// URL cleaning, fetching, cache and scraping path. SUPPORTED_DOMAINS enforcement
+// remains opt-in (false by default), rather than being silently forced on Vercel.
 async function getVideoDetailsByUrl(rawUrl, options = {}) {
     if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
         const error = new Error('Video URL required');
@@ -1609,10 +1613,15 @@ async function getVideoDetailsByUrl(rawUrl, options = {}) {
         throw error;
     }
 
-    // User-supplied URLs must always pass the configured SUPPORTED_DOMAINS allowlist.
-    // Validate before cache lookup and validate every redirect in fetchSupportedVideoPage.
-    let videoUrl = validatePublicVideoUrl(rawUrl.trim());
-    const fetchPage = options.fetchPage || fetchSupportedVideoPage;
+    let videoUrl = cleanUrlForScraping(rawUrl.trim());
+    const fetchPage = options.fetchPage || fetchVideoPage;
+
+    // Preserve Render's optional strict-domain check. It is disabled by default.
+    if (ENFORCE_DOMAIN_CHECK && !isSupportedHost(videoUrl)) {
+        const error = new Error('Unsupported video domain');
+        error.status = 400;
+        throw error;
+    }
 
     const cacheKey = getCacheKey('video-by-url', { url: videoUrl });
     const cached = getCached(cacheKey);
@@ -1627,7 +1636,7 @@ async function getVideoDetailsByUrl(rawUrl, options = {}) {
     // Use the same alternate-host retry as the website player.
     if (!details.videoUrl || details.videoUrl === '#') {
         const altUrl = swapToVideoHost(videoUrl);
-        if (altUrl && isSupportedHost(altUrl)) {
+        if (altUrl && (!options.enforceSupportedHost || isSupportedHost(altUrl))) {
             debugLog(`No video link on this host. Retrying on video host: ${describeMediaUrl(altUrl)}`);
             try {
                 const html2 = await fetchPage(altUrl);
@@ -1652,9 +1661,10 @@ async function getVideoDetailsByUrl(rawUrl, options = {}) {
 }
 
 async function getPublicVideoDetails(rawUrl) {
-    // Share the same configured allowlist and redirect validation as the website API.
+    // Match Render exactly: the public API uses the same configured source-fetch
+    // behavior as /api/video/by-url. Do not impose a separate allowlist here.
     const details = await getVideoDetailsByUrl(String(rawUrl || ''), {
-        fetchPage: fetchSupportedVideoPage
+        fetchPage: fetchVideoPage
     });
 
     if (!details.videoUrl || details.videoUrl === '#') {
